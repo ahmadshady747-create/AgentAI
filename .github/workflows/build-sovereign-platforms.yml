@@ -75,12 +75,14 @@ jobs:
           mkdir -p src-tauri/gen/android
           echo "keyAlias=opencode" > src-tauri/gen/android/keystore.properties
           echo "password=opencode123" >> src-tauri/gen/android/keystore.properties
+          echo "storePassword=opencode123" >> src-tauri/gen/android/keystore.properties
+          echo "keyPassword=opencode123" >> src-tauri/gen/android/keystore.properties
           echo "storeFile=$GITHUB_WORKSPACE/release.keystore" >> src-tauri/gen/android/keystore.properties
 
       - name: Build Android APK
         working-directory: packages/desktop
         run: |
-          tauri android build --target aarch64 --target armv7 || tauri android build --debug --target aarch64 --target armv7
+          tauri android build --apk --target aarch64 --target armv7
 
       - name: Align, Sign, and Verify APK
         run: |
@@ -88,14 +90,30 @@ jobs:
           echo "Using Android Build Tools: $BUILD_TOOLS_DIR"
           
           mkdir -p release-apk
-          for apk in $(find packages/desktop/src-tauri/gen/android -name "*.apk" ! -name "*aligned*" ! -name "*signed*"); do
-            echo "Found APK: $apk"
-            $BUILD_TOOLS_DIR/zipalign -p -f -v 4 "$apk" "${apk}.aligned"
-            $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:opencode123 --key-pass pass:opencode123 --ks-key-alias opencode --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "${apk}.final.apk" "${apk}.aligned"
-            $BUILD_TOOLS_DIR/apksigner verify --verbose "${apk}.final.apk"
-            cp "${apk}.final.apk" release-apk/opencode-mobile-android.apk
-            cp "${apk}.final.apk" release-apk/opencode-mobile-android-arm64.apk
-          done
+          RAW_APK=$(find packages/desktop/src-tauri/gen/android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          if [ -z "$RAW_APK" ]; then
+            RAW_APK=$(find packages/desktop/src-tauri/gen/android -type f -name "*.apk" | head -n 1)
+          fi
+          
+          echo "Found raw APK to sign: $RAW_APK"
+          if [ -z "$RAW_APK" ]; then
+            echo "ERROR: No APK found after build!"
+            exit 1
+          fi
+          
+          ls -lh "$RAW_APK"
+          
+          # Zipalign 4-byte boundaries (critical for Android 11+ dynamic linker)
+          $BUILD_TOOLS_DIR/zipalign -p -f -v 4 "$RAW_APK" /tmp/app-aligned.apk
+          
+          # Sign with v1, v2, v3 schemes
+          $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:opencode123 --key-pass pass:opencode123 --ks-key-alias opencode --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out release-apk/opencode-mobile-android.apk /tmp/app-aligned.apk
+          
+          # Verify signatures
+          $BUILD_TOOLS_DIR/apksigner verify --verbose release-apk/opencode-mobile-android.apk
+          
+          # Duplicate arm64 asset for direct download links
+          cp release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk
           
           echo "Processed APKs in release-apk/:"
           ls -lh release-apk/
