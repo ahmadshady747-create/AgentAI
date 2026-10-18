@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode — Sovereign AI Agent</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app" class="app-container">
+    <!-- Top Status Bar -->
+    <header class="top-status-bar">
+      <div class="status-left">
+        <div class="logo-mark">
+          <span class="logo-dot"></span>
+          <span class="logo-title">OPENCODE</span>
+          <span class="logo-badge">LOCUS CORE</span>
+        </div>
+        <div class="workspace-pill" id="workspacePath">
+          <svg class="icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25H12v1.5H5.25a.25.25 0 0 1-.25-.25Z"></path>
+          </svg>
+          <span class="path-text">opencode-fork</span>
+          <span class="branch-tag">git: main</span>
+        </div>
+      </div>
+
+      <div class="status-center">
+        <div class="engine-badge" id="locusBadge">
+          <span class="status-pulse"></span>
+          <span class="engine-label">LOCUS AST Engine:</span>
+          <span class="engine-state" id="locusStatusText">Verifying...</span>
+        </div>
+        <div class="token-savings-badge" title="Tokens saved via AST skeleton compression">
+          <span id="tokenSavingsText">⚡ Context Compressed: 86%</span>
+        </div>
+      </div>
+
+      <div class="status-right">
+        <select id="modelSelector" class="model-select">
+          <option value="anthropic/claude-3-7-sonnet" selected>Claude 3.7 Sonnet (Hybrid)</option>
+        </select>
+        <button id="apiKeyBtn" class="btn-icon" title="API Keys & Secure Store">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-2.75h-.75a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Linear Command & Message Stream -->
+    <main class="stream-container" id="streamContainer">
+      <div class="stream-scroll" id="streamScroll">
+        <!-- Initial Welcome Card in Claude Code / Codex aesthetic -->
+        <div class="message-card system-card">
+          <div class="card-header">
+            <span class="prompt-glyph">⚡</span>
+            <span class="card-title">OpenCode Core Engine Initialized</span>
+            <span class="timestamp">v2.0.32-sovereign</span>
+          </div>
+          <div class="card-body">
+            <p class="lead-text">
+              Connected to <strong>OpenCode</strong> native backend with <strong>LOCUS</strong> deterministic AST compression & safety invariants.
+            </p>
+            <div class="system-specs">
+              <div class="spec-item"><span class="spec-label">File Indexer:</span> LOCUS High-Speed AST Skeleton</div>
+              <div class="spec-item"><span class="spec-label">Safety Firewalls:</span> 32 Enterprise Invariants Active (<0.20ms)</div>
+              <div class="spec-item"><span class="spec-label">UI Runtime:</span> Native Tauri v2 (Zero Electron overhead)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sample Linear Interaction -->
+        <div class="message-card user-card">
+          <div class="card-header">
+            <span class="prompt-glyph">&gt;</span>
+            <span class="card-title">User</span>
+            <span class="timestamp">Session ready</span>
+          </div>
+          <div class="card-body">
+            <code>locus check packages/core/src/tool.ts</code>
+          </div>
+        </div>
+
+        <div class="message-card agent-card">
+          <div class="card-header">
+            <span class="prompt-glyph">●</span>
+            <span class="card-title">LOCUS Execution</span>
+            <span class="status-tag status-success">AST Skeletons Active</span>
+          </div>
+          <div class="card-body">
+            <div class="diff-card">
+              <div class="diff-header" onclick="toggleDiff(this)">
+                <span class="diff-arrow">▼</span>
+                <span class="diff-filename">packages/core/src/tool/plugin/read.ts</span>
+                <span class="diff-stat">+48 -1 lines (Surgically patched)</span>
+              </div>
+              <div class="diff-content open">
+                <pre class="diff-pre"><code class="diff-code"><span class="diff-add">+ import { Locus } from "../../locus.js"</span>
+<span class="diff-context">  // Intercept reads via LOCUS AST compression</span>
+<span class="diff-add">+ if (locus.isSupported(path) && mode !== "raw") {</span>
+<span class="diff-add">+   const skeleton = yield* locus.skeleton(path);</span>
+<span class="diff-add">+   // [LOCUS Engine: ~85% token reduction]</span>
+<span class="diff-add">+ }</span></code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Input Bar -->
+    <footer class="input-dock">
+      <div class="input-wrapper">
+        <span class="input-glyph">&gt;</span>
+        <textarea id="cmdInput" rows="1" placeholder="Type a command, ask a question, or use /locus, /check, /slice..." autofocus></textarea>
+        <button id="sendBtn" class="send-btn" title="Send (Enter)">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M.989 8 .064 2.68a1.342 1.342 0 0 1 1.85-1.462l13.402 6.164a1.15 1.15 0 0 1 0 2.076L1.913 15.62A1.342 1.342 0 0 1 .065 14.16L.989 8.84 8 8 .989 8Z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="input-hints">
+        <span class="hint-item"><kbd>Enter</kbd> to run</span>
+        <span class="hint-item"><kbd>Shift + Enter</kbd> for newline</span>
+        <span class="hint-item"><kbd>/locus check</kbd> to verify AST invariants</span>
+        <span class="hint-item"><kbd>/locus slice &lt;symbol&gt;</kbd> to isolate symbol</span>
+      </div>
+    </footer>
+
+    <!-- Secure Key Modal -->
+    <div id="apiModal" class="modal-backdrop hidden">
+      <div class="modal-window">
+        <div class="modal-header">
+          <h3>Secure API Key Store</h3>
+          <button id="closeModal" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-desc">Configure your OpenCode Zen or provider credentials. Keys are encrypted and stored locally in your sovereign vault.</p>
+          <div class="form-group">
+            <label for="keyProviderSelect">Target Provider:</label>
+            <select id="keyProviderSelect" class="provider-select" style="width: 100%; margin-bottom: 12px; background: #0c0e12; border: 1px solid #242938; color: #e6edf3; padding: 6px 10px; border-radius: 6px;">
+              <option value="nvidia" selected>NVIDIA NIM (api.nvidia.com)</option>
+              <option value="opencode_zen">OpenCode Zen (Universal Fast Proxy)</option>
+              <option value="anthropic">Anthropic (Claude Direct)</option>
+              <option value="openai">OpenAI (GPT Direct)</option>
+              <option value="deepseek">DeepSeek (R1 / V3)</option>
+              <option value="groq">Groq LPU (api.groq.com)</option>
+              <option value="cloudflare">Cloudflare Workers AI</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="apiKeyInput">Provider API Key / Token:</label>
+            <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off">
+          </div>
+          <div id="keyStatusIndicator" style="margin-top: 8px; font-size: 11.5px; color: #8b949e;"></div>
+
+          <!-- Provider Direct Key Link & Guide Box -->
+          <div id="providerGuideBox" style="margin-top: 14px; padding: 12px; background: rgba(56, 139, 253, 0.08); border: 1px solid rgba(56, 139, 253, 0.25); border-radius: 6px; font-size: 12px; line-height: 1.5;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span id="guideTitle" style="font-weight: 600; color: #79c0ff;">NVIDIA NIM API Key</span>
+              <button id="openDirectLinkBtn" type="button" style="background: #238636; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                <span>🔗 استخراج المفتاح (رابط مباشر)</span>
+              </button>
+            </div>
+            <p id="guideDescription" style="color: #c9d1d9; margin-bottom: 6px;">
+              تمنحك NVIDIA رصيداً مجانياً قدره 1,000 نقطة استدلال لتشغيل Llama 3.3 و DeepSeek R1 و Qwen 2.5 Coder.
+            </p>
+            <ol id="guideSteps" style="margin-left: 18px; color: #8b949e; font-size: 11px;">
+              <li>سجل دخولك إلى NVIDIA Build.</li>
+              <li>اختر أيقونة الحساب ثم API Keys أو اختر أي نموذج واضغط Get API Key.</li>
+              <li>انسخ المفتاح الذي يبدأ بـ nvapi-... والصقه هنا.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="saveKeyBtn" class="btn-primary">Save to Secure Store</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

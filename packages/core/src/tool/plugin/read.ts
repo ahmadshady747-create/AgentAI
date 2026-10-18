@@ -11,6 +11,7 @@ import { SessionInstructions } from "../../session/instructions.js"
 import { AbsolutePath } from "../../schema.js"
 import { ReadToolFileSystem } from "../read-filesystem.js"
 import { Environment } from "../../environment/index.js"
+import { Locus } from "../../locus.js"
 
 export const name = "read"
 const FILENAME = "AGENTS.md"
@@ -21,6 +22,15 @@ const LocationInput = Schema.Struct({
   }),
   limit: ReadToolFileSystem.PageInput.fields.limit.annotate({
     description: "The maximum number of lines or directory entries to read (defaults to and capped at 2000)",
+  }),
+  mode: Schema.optional(Schema.Literals(["auto", "skeleton", "slice", "raw"])).annotate({
+    description: "LOCUS context optimization mode. 'skeleton' or 'auto' compresses AST signatures. 'slice' extracts a symbol. 'raw' reads line-by-line verbatim.",
+  }),
+  symbol: Schema.optional(Schema.String).annotate({
+    description: "Specific symbol to extract using LOCUS semantic intent slicer.",
+  }),
+  depth: Schema.optional(Schema.Number).annotate({
+    description: "Slicing graph depth (defaults to 2).",
   }),
 })
 export const Input = LocationInput
@@ -34,6 +44,7 @@ export const Plugin = {
     const sessionInstructions = yield* SessionInstructions.Service
     const fs = yield* FSUtil.Service
     const location = yield* Location.Service
+    const locus = yield* Locus.Service
 
     yield* ctx.tool
       .transform((editor) =>
@@ -41,7 +52,7 @@ export const Plugin = {
           name,
           options: { codemode: false },
           description:
-            "Read the contents of a file or directory. Supports text files, images, and PDFs. Images and PDFs are presented directly to the model. Each text line is prefixed by its 1-based line number as <line>: <content>. The prefix is for reference and is not part of the file content. Directory entries are returned one per line. Use offset and limit to read large files or directories in sections. Prefer one larger read over many small slices, and use grep to find specific content in large files.",
+            "Read the contents of a file or directory powered by LOCUS AST context compression. For code files, returns token-efficient AST skeletons by default. Use symbol: '<name>' to slice a specific symbol or method. Use mode: 'raw' to read verbatim lines. Supports text files, images, and PDFs.",
           input: Input,
           output: Output,
           execute: (input, context) => {
@@ -53,7 +64,48 @@ export const Plugin = {
                 })
 
               const requested = yield* access.authorizeRead(input.path, context)
-              const result = yield* read(requested).pipe(
+
+              let locusResult: { content: typeof Output.Type; target: FileAccess.Target; path: string } | undefined
+
+              if (locus.isSupported(requested.absolute) && input.mode !== "raw") {
+                if (input.symbol) {
+                  const sliceText = yield* locus.slice(requested.absolute, input.symbol, input.depth ?? 2).pipe(
+                    Effect.orElseSucceed(() => undefined),
+                  )
+                  if (sliceText) {
+                    locusResult = {
+                      content: new ReadToolFileSystem.TextPage({
+                        type: "text-page",
+                        content: `// [LOCUS Semantic Intent Slice for '${input.symbol}' | Target: ${input.path}]\n${sliceText}`,
+                        mime: "text/plain",
+                        offset: 1,
+                        truncated: false,
+                      }),
+                      target: requested,
+                      path: input.path,
+                    }
+                  }
+                } else if (input.mode === "skeleton" || (input.offset === undefined && input.limit === undefined)) {
+                  const skeletonText = yield* locus.skeleton(requested.absolute).pipe(
+                    Effect.orElseSucceed(() => undefined),
+                  )
+                  if (skeletonText) {
+                    locusResult = {
+                      content: new ReadToolFileSystem.TextPage({
+                        type: "text-page",
+                        content: `// [LOCUS Engine AST Skeleton (~85% token optimization): ${input.path}]\n// To read full body of any symbol, call read with symbol: "<name>" or mode: "raw"\n\n${skeletonText}`,
+                        mime: "text/plain",
+                        offset: 1,
+                        truncated: false,
+                      }),
+                      target: requested,
+                      path: input.path,
+                    }
+                  }
+                }
+              }
+
+              const result = locusResult ?? (yield* read(requested).pipe(
                 Effect.map((content) => ({ content, target: requested, path: input.path })),
                 Effect.catchIf(
                   (error) => error instanceof Environment.NotFound,

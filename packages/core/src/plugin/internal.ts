@@ -77,6 +77,8 @@ import { OpenCodeTools } from "../tool/plugin/opencode.js"
 import { QuestionTool } from "../tool/plugin/question.js"
 import { ReadToolFileSystem } from "../tool/read-filesystem.js"
 import { ReadTool } from "../tool/plugin/read.js"
+import { Locus } from "../locus.js"
+import { LocusTool } from "../tool/plugin/locus.js"
 import { ShellTool } from "../tool/plugin/shell.js"
 import { SkillTool } from "../tool/plugin/skill.js"
 import { SubagentTool } from "../tool/plugin/subagent.js"
@@ -137,6 +139,7 @@ const services = [
   Permission.Service,
   Form.Service,
   ReadToolFileSystem.Service,
+  Locus.Service,
   Reference.Service,
   WebSearch.Service,
   Ripgrep.Service,
@@ -240,6 +243,7 @@ const pre = [
   McpResourceTools.Plugin,
   QuestionTool.Plugin,
   ReadTool.Plugin,
+  LocusTool.Plugin,
   ShellTool.Plugin,
   SkillTool.Plugin,
   SubagentTool.Plugin,
