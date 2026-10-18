@@ -36,6 +36,9 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
+      - name: Install Tauri CLI globally
+        run: npm install -g @tauri-apps/cli
+
       - name: Setup Android NDK
         run: |
           if [ -z "$ANDROID_HOME" ]; then
@@ -53,10 +56,6 @@ jobs:
           echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
 
-      - name: Install Desktop dependencies
-        working-directory: packages/desktop
-        run: npm install
-
       - name: Initialize Android scaffolding
         working-directory: packages/desktop
         env:
@@ -64,7 +63,7 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
         run: |
-          npx @tauri-apps/cli android init --ci --skip-targets-install
+          tauri android init --ci --skip-targets-install
 
       - name: Build Android APK
         working-directory: packages/desktop
@@ -73,7 +72,7 @@ jobs:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.NDK_HOME }}
         run: |
-          npx @tauri-apps/cli android build --debug --apk --target aarch64
+          tauri android build --debug --target aarch64
 
       - name: Collect & Stage APK Binaries
         run: |
@@ -122,19 +121,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Desktop dependencies
-        working-directory: packages/desktop
-        run: npm install
+      - name: Install Tauri CLI globally
+        run: npm install -g @tauri-apps/cli
 
       - name: Build Linux Binary
         working-directory: packages/desktop
         run: |
-          npm run build || npx @tauri-apps/cli build --no-bundle
+          tauri build --no-bundle
           mkdir -p release-linux
           if [ -f src-tauri/target/release/opencode-desktop ]; then
             cp src-tauri/target/release/opencode-desktop release-linux/opencode-desktop-linux-x64
           fi
-          find src-tauri/target/release/bundle -type f \( -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release-linux/ \; 2>/dev/null || true
           ls -la release-linux/
 
       - name: Upload Artifact
@@ -167,19 +164,17 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Desktop dependencies
-        working-directory: packages/desktop
-        run: npm install
+      - name: Install Tauri CLI globally
+        run: npm install -g @tauri-apps/cli
 
       - name: Build macOS Application
         working-directory: packages/desktop
         run: |
-          npm run build || npx @tauri-apps/cli build --no-bundle
+          tauri build --no-bundle
           mkdir -p release-macos
           if [ -f src-tauri/target/release/opencode-desktop ]; then
             cp src-tauri/target/release/opencode-desktop release-macos/opencode-desktop-macos
           fi
-          find src-tauri/target/release/bundle -type f -name "*.dmg" -exec cp {} release-macos/ \; 2>/dev/null || true
           ls -la release-macos/
 
       - name: Upload Artifact
