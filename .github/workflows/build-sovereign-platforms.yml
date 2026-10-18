@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-android:
-    name: Build Android APK
+    name: Build Android APK (Signed & Aligned)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -64,29 +64,41 @@ jobs:
           echo "SDK path: $ANDROID_ROOT"
           echo "NDK path: $NDK_PATH"
 
+      - name: Generate Keystore & Setup Signing
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias opencode -keyalg RSA -keysize 2048 -validity 10000 -storepass opencode123 -keypass opencode123 -dname "CN=AgentAI, OU=Mobile, O=OpenCode, L=Tripoli, S=Tripoli, C=LY"
+
       - name: Initialize Android scaffolding
         working-directory: packages/desktop
         run: |
           tauri android init --ci --skip-targets-install
+          mkdir -p src-tauri/gen/android
+          echo "keyAlias=opencode" > src-tauri/gen/android/keystore.properties
+          echo "password=opencode123" >> src-tauri/gen/android/keystore.properties
+          echo "storeFile=$GITHUB_WORKSPACE/release.keystore" >> src-tauri/gen/android/keystore.properties
 
       - name: Build Android APK
         working-directory: packages/desktop
         run: |
-          tauri android build --debug --target aarch64
+          tauri android build --target aarch64 --target armv7 || tauri android build --debug --target aarch64 --target armv7
 
-      - name: Collect & Stage APK Binaries
+      - name: Align, Sign, and Verify APK
         run: |
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          echo "Using Android Build Tools: $BUILD_TOOLS_DIR"
+          
           mkdir -p release-apk
-          APK_FILE=$(find packages/desktop/src-tauri/gen/android -name "*.apk" | head -n 1)
-          if [ -n "$APK_FILE" ]; then
-            echo "Found APK at $APK_FILE"
-            cp "$APK_FILE" release-apk/opencode-mobile-android-arm64.apk
-            cp "$APK_FILE" release-apk/opencode-mobile-android.apk
-          else
-            echo "Error: No APK file generated!"
-            exit 1
-          fi
-          ls -la release-apk/
+          for apk in $(find packages/desktop/src-tauri/gen/android -name "*.apk" ! -name "*aligned*" ! -name "*signed*"); do
+            echo "Found APK: $apk"
+            $BUILD_TOOLS_DIR/zipalign -p -f -v 4 "$apk" "${apk}.aligned"
+            $BUILD_TOOLS_DIR/apksigner sign --ks release.keystore --ks-pass pass:opencode123 --key-pass pass:opencode123 --ks-key-alias opencode --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true --out "${apk}.final.apk" "${apk}.aligned"
+            $BUILD_TOOLS_DIR/apksigner verify --verbose "${apk}.final.apk"
+            cp "${apk}.final.apk" release-apk/opencode-mobile-android.apk
+            cp "${apk}.final.apk" release-apk/opencode-mobile-android-arm64.apk
+          done
+          
+          echo "Processed APKs in release-apk/:"
+          ls -lh release-apk/
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -100,94 +112,3 @@ jobs:
         run: |
           gh release view v2.0.32-sovereign --repo ${{ github.repository }} || gh release create v2.0.32-sovereign --title "OpenCode Sovereign Edition v2.0.32" --notes "Direct native release binaries" --repo ${{ github.repository }}
           gh release upload v2.0.32-sovereign release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk --repo ${{ github.repository }} --clobber
-
-  build-linux:
-    name: Build Linux Desktop
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Tauri CLI globally
-        run: npm install -g @tauri-apps/cli
-
-      - name: Build Linux Binary
-        working-directory: packages/desktop
-        run: |
-          tauri build --no-bundle
-          mkdir -p release-linux
-          if [ -f src-tauri/target/release/opencode-desktop ]; then
-            cp src-tauri/target/release/opencode-desktop release-linux/opencode-desktop-linux-x64
-          fi
-          ls -la release-linux/
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencode-linux-x64
-          path: packages/desktop/release-linux/*
-
-      - name: Upload to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd packages/desktop
-          if [ -d release-linux ] && [ "$(ls -A release-linux)" ]; then
-            gh release upload v2.0.32-sovereign release-linux/* --repo ${{ github.repository }} --clobber
-          fi
-
-  build-macos:
-    name: Build macOS Desktop
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Tauri CLI globally
-        run: npm install -g @tauri-apps/cli
-
-      - name: Build macOS Application
-        working-directory: packages/desktop
-        run: |
-          tauri build --no-bundle
-          mkdir -p release-macos
-          if [ -f src-tauri/target/release/opencode-desktop ]; then
-            cp src-tauri/target/release/opencode-desktop release-macos/opencode-desktop-macos
-          fi
-          ls -la release-macos/
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: opencode-macos
-          path: packages/desktop/release-macos/*
-
-      - name: Upload to GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd packages/desktop
-          if [ -d release-macos ] && [ "$(ls -A release-macos)" ]; then
-            gh release upload v2.0.32-sovereign release-macos/* --repo ${{ github.repository }} --clobber
-          fi
