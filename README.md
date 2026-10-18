@@ -33,10 +33,10 @@ Get the latest standalone release binary directly from the official GitHub Relea
 
 | Platform | Target Architecture | Package / Executable | Direct Download Link |
 | :--- | :--- | :--- | :--- |
+| **Android Mobile** | `aarch64` (ARM64) / Universal | Standalone Android APK (`.apk`) | [**📱 Download opencode-mobile-android.apk**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-mobile-android.apk) |
 | **Windows Desktop** | `x86_64` (Windows 10/11) | Native Executable (`.exe`) | [**📥 Download opencode-desktop-windows-x64.exe**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.exe) |
-| **Android Mobile** | `aarch64` / `armv7` | APK / Android Project | [Build Instructions](#-android-mobile-build) |
-| **macOS Desktop** | Apple Silicon & Intel | DMG / Universal Binary | [Build from Source](#-building-from-source) |
-| **Linux Desktop** | `x86_64` / `aarch64` | AppImage / Deb / Binary | [Build from Source](#-building-from-source) |
+| **Linux Desktop** | `x86_64` (Ubuntu/Debian/Arch) | Standalone Executable / Deb | [**🐧 Download opencode-desktop-linux-x64**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-linux-x64) |
+| **macOS Desktop** | Apple Silicon & Intel | DMG Package / Binary | [**🍏 Download opencode-desktop-macos.dmg**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-macos.dmg) |
 
 > [!NOTE]
 > All releases and changelogs are published on the [Releases Page](https://github.com/ahmadshady747-create/AgentAI/releases).
