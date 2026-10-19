@@ -33,6 +33,30 @@ pub enum StreamEvent {
     Error(String),
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct McpServerConfig {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub enabled: bool,
+    pub description: String,
+    pub tools: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillConfig {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub description: String,
+    pub prompt: String,
+    pub allowed_tools: Vec<String>,
+    pub always_on: bool,
+    pub slash_command: String,
+}
+
 fn get_opencode_home() -> PathBuf {
     #[cfg(target_os = "android")]
     {
@@ -252,69 +276,97 @@ fn list_saved_providers() -> Vec<String> {
     vault.keys().cloned().collect()
 }
 
-// --- DYNAMIC MODEL CATALOG ---
+// --- DYNAMIC MODEL CATALOG (Exclusively 4 Sovereign Providers) ---
 
 #[tauri::command]
 fn list_available_models() -> Vec<ModelInfo> {
     let vault = load_vault();
-    let has_zen = vault.contains_key("opencode_zen") || vault.contains_key("zen");
+    let has_groq = vault.contains_key("groq");
+    let has_gemini = vault.contains_key("gemini");
     let has_nvidia = vault.contains_key("nvidia");
+    let has_openrouter = vault.contains_key("openrouter");
 
-    let mut models = vec![
-        // Sovereign Intelligent Router
+    vec![
+        // 1. Groq LPU (Ultra-Fast)
         ModelInfo {
-            id: "router/auto".into(),
-            name: "Sovereign Router (Auto Intent)".into(),
-            provider: "Sovereign Router".into(),
+            id: "groq/llama-3.3-70b-versatile".into(),
+            name: "Llama 3.3 70B (500 tps)".into(),
+            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
             context_window: 128_000,
             recommended: true,
             is_reasoning: false,
         },
         ModelInfo {
-            id: "router/reasoning".into(),
-            name: "Router: Reasoning (DeepSeek R1 / NVIDIA)".into(),
-            provider: "Sovereign Router".into(),
-            context_window: 64_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-        ModelInfo {
-            id: "router/coder".into(),
-            name: "Router: Code Specialist (Qwen 2.5 Coder 32B)".into(),
-            provider: "Sovereign Router".into(),
+            id: "groq/llama-3.1-8b-instant".into(),
+            name: "Llama 3.1 8B Instant".into(),
+            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
             context_window: 128_000,
             recommended: false,
             is_reasoning: false,
         },
         ModelInfo {
-            id: "router/fast".into(),
-            name: "Router: Fast Inference (Llama 3.3 70B)".into(),
-            provider: "Sovereign Router".into(),
-            context_window: 128_000,
+            id: "groq/mixtral-8x7b-32768".into(),
+            name: "Mixtral 8x7B 32k".into(),
+            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
+            context_window: 32_768,
+            recommended: false,
+            is_reasoning: false,
+        },
+        ModelInfo {
+            id: "groq/gemma2-9b-it".into(),
+            name: "Gemma 2 9B Instruct".into(),
+            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
+            context_window: 8_192,
             recommended: false,
             is_reasoning: false,
         },
 
-        // NVIDIA NIM Direct Targets
+        // 2. Google Gemini (Free & High Capacity)
+        ModelInfo {
+            id: "gemini/gemini-1.5-flash".into(),
+            name: "Gemini 1.5 Flash (1M ctx)".into(),
+            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
+            context_window: 1_000_000,
+            recommended: true,
+            is_reasoning: false,
+        },
+        ModelInfo {
+            id: "gemini/gemini-2.0-flash".into(),
+            name: "Gemini 2.0 Flash".into(),
+            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
+            context_window: 1_000_000,
+            recommended: false,
+            is_reasoning: false,
+        },
+        ModelInfo {
+            id: "gemini/gemini-1.5-pro".into(),
+            name: "Gemini 1.5 Pro (Deep Reasoning)".into(),
+            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
+            context_window: 2_000_000,
+            recommended: false,
+            is_reasoning: true,
+        },
+
+        // 3. NVIDIA NIM (Hosted SOTA)
         ModelInfo {
             id: "nvidia/deepseek-ai/deepseek-r1".into(),
-            name: "DeepSeek R1 Reasoning".into(),
+            name: "DeepSeek R1 (NVIDIA Reasoning)".into(),
             provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
             context_window: 64_000,
             recommended: false,
             is_reasoning: true,
         },
         ModelInfo {
-            id: "nvidia/qwen/qwen2.5-coder-32b-instruct".into(),
-            name: "Qwen 2.5 Coder 32B".into(),
+            id: "nvidia/meta/llama-3.3-70b-instruct".into(),
+            name: "Llama 3.3 70B Instruct".into(),
             provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
             context_window: 128_000,
             recommended: false,
             is_reasoning: false,
         },
         ModelInfo {
-            id: "nvidia/meta/llama-3.3-70b-instruct".into(),
-            name: "Llama 3.3 70B Instruct".into(),
+            id: "nvidia/qwen/qwen2.5-coder-32b-instruct".into(),
+            name: "Qwen 2.5 Coder 32B".into(),
             provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
             context_window: 128_000,
             recommended: false,
@@ -329,63 +381,40 @@ fn list_available_models() -> Vec<ModelInfo> {
             is_reasoning: false,
         },
 
-        // Existing catalog models
+        // 4. OpenRouter (Universal & Free Tier Models)
         ModelInfo {
-            id: "anthropic/claude-3-7-sonnet".into(),
-            name: "Claude 3.7 Sonnet (Hybrid Reasoning)".into(),
-            provider: if has_zen { "OpenCode Zen" } else { "Anthropic" }.into(),
-            context_window: 200_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-        ModelInfo {
-            id: "anthropic/claude-3-5-sonnet".into(),
-            name: "Claude 3.5 Sonnet v2".into(),
-            provider: if has_zen { "OpenCode Zen" } else { "Anthropic" }.into(),
-            context_window: 200_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "openai/gpt-4o".into(),
-            name: "GPT-4o Omnimodal".into(),
-            provider: if has_zen { "OpenCode Zen" } else { "OpenAI" }.into(),
+            id: "openrouter/meta-llama/llama-3.3-70b-instruct:free".into(),
+            name: "Llama 3.3 70B (Free)".into(),
+            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
             context_window: 128_000,
             recommended: false,
             is_reasoning: false,
         },
         ModelInfo {
-            id: "openai/o3-mini".into(),
-            name: "o3-mini (High Reasoning)".into(),
-            provider: if has_zen { "OpenCode Zen" } else { "OpenAI" }.into(),
-            context_window: 200_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-        ModelInfo {
-            id: "deepseek/deepseek-r1".into(),
-            name: "DeepSeek R1 (Open Reasoning)".into(),
-            provider: if has_zen { "OpenCode Zen" } else { "DeepSeek" }.into(),
+            id: "openrouter/deepseek/deepseek-r1:free".into(),
+            name: "DeepSeek R1 (Free)".into(),
+            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
             context_window: 64_000,
             recommended: false,
             is_reasoning: true,
         },
-    ];
-
-    // Detect local Ollama if running
-    if let Ok(resp) = std::net::TcpStream::connect("127.0.0.1:11434") {
-        drop(resp);
-        models.push(ModelInfo {
-            id: "ollama/local-runner".into(),
-            name: "Ollama (Local Private Daemon)".into(),
-            provider: "Localhost".into(),
-            context_window: 32_000,
+        ModelInfo {
+            id: "openrouter/google/gemini-2.0-flash-exp:free".into(),
+            name: "Gemini 2.0 Flash Exp (Free)".into(),
+            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
+            context_window: 1_000_000,
             recommended: false,
             is_reasoning: false,
-        });
-    }
-
-    models
+        },
+        ModelInfo {
+            id: "openrouter/anthropic/claude-3.7-sonnet".into(),
+            name: "Claude 3.7 Sonnet".into(),
+            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
+            context_window: 200_000,
+            recommended: false,
+            is_reasoning: true,
+        },
+    ]
 }
 
 // --- STREAMING SESSION TURN EXECUTION ---
@@ -793,6 +822,297 @@ async fn execute_session_turn(
     Ok(())
 }
 
+fn get_mcp_file() -> PathBuf {
+    get_opencode_home().join("mcp_servers.json")
+}
+
+fn default_mcp_servers() -> Vec<McpServerConfig> {
+    vec![
+        McpServerConfig {
+            id: "rea".into(),
+            name: "REA MCP (Reverse Engineering & Binary)".into(),
+            command: "rea-mcp-server".into(),
+            args: vec!["--protocol".into(), "stdio".into()],
+            env: HashMap::new(),
+            enabled: true,
+            description: "Deep binary analysis, native instruction tracing, and symbol recovery.".into(),
+            tools: vec![
+                "inspect_native_instruction".into(),
+                "read_function_instructions".into(),
+                "trace_feature".into(),
+                "binary_overview".into(),
+            ],
+        },
+        McpServerConfig {
+            id: "web_search".into(),
+            name: "Web & Docs Search MCP".into(),
+            command: "npx".into(),
+            args: vec!["-y".into(), "@modelcontextprotocol/server-duckduckgo".into()],
+            env: HashMap::new(),
+            enabled: true,
+            description: "Realtime web search and public API documentation lookup.".into(),
+            tools: vec![
+                "search_web".into(),
+                "read_url_content".into(),
+            ],
+        },
+        McpServerConfig {
+            id: "system_automation".into(),
+            name: "System Automation MCP".into(),
+            command: "automation-mcp".into(),
+            args: vec!["--workspace".into(), ".".into()],
+            env: HashMap::new(),
+            enabled: true,
+            description: "Multi-file operations, workspace terminal commands, and scheduled tasks.".into(),
+            tools: vec![
+                "run_command".into(),
+                "schedule".into(),
+                "patch_file".into(),
+            ],
+        },
+    ]
+}
+
+#[tauri::command]
+fn get_mcp_config() -> Vec<McpServerConfig> {
+    let file = get_mcp_file();
+    if let Ok(bytes) = fs::read_to_string(&file) {
+        if let Ok(servers) = serde_json::from_str::<Vec<McpServerConfig>>(&bytes) {
+            return servers;
+        }
+    }
+    let defaults = default_mcp_servers();
+    let _ = save_mcp_config(defaults.clone());
+    defaults
+}
+
+#[tauri::command]
+fn save_mcp_config(servers: Vec<McpServerConfig>) -> Result<(), String> {
+    let file = get_mcp_file();
+    let json = serde_json::to_string_pretty(&servers).map_err(|e| e.to_string())?;
+    fs::write(&file, json).map_err(|e| format!("Failed to write MCP config: {}", e))
+}
+
+#[tauri::command]
+fn toggle_mcp_server(id: String, enabled: bool) -> Result<Vec<McpServerConfig>, String> {
+    let mut servers = get_mcp_config();
+    if let Some(srv) = servers.iter_mut().find(|s| s.id == id) {
+        srv.enabled = enabled;
+    }
+    save_mcp_config(servers.clone())?;
+    Ok(servers)
+}
+
+#[tauri::command]
+fn get_raw_mcp_json() -> Result<String, String> {
+    let file = get_mcp_file();
+    if let Ok(bytes) = fs::read_to_string(&file) {
+        Ok(bytes)
+    } else {
+        let defaults = default_mcp_servers();
+        serde_json::to_string_pretty(&defaults).map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+fn save_raw_mcp_json(raw_json: String) -> Result<(), String> {
+    let parsed: Vec<McpServerConfig> = serde_json::from_str(&raw_json)
+        .map_err(|e| format!("Invalid MCP JSON format: {}", e))?;
+    save_mcp_config(parsed)
+}
+
+fn get_skills_file() -> PathBuf {
+    get_opencode_home().join("skills.json")
+}
+
+fn default_skills() -> Vec<SkillConfig> {
+    vec![
+        SkillConfig {
+            id: "code_review".into(),
+            name: "Code Review & Safety Verification".into(),
+            category: "Code Quality".into(),
+            description: "Analyzes code diffs, verifies AST invariants, and checks blast radius via LOCUS.".into(),
+            prompt: "Perform a rigorous code review. Focus on boundary checks, memory invariants, AST integrity, and security vulnerabilities.".into(),
+            allowed_tools: vec!["locus_slice".into(), "locus_skeleton".into()],
+            always_on: false,
+            slash_command: "/review".into(),
+        },
+        SkillConfig {
+            id: "system_automation".into(),
+            name: "Workspace Automation & Builds".into(),
+            category: "Automation".into(),
+            description: "Automates multi-step builds, test suites, and git releases.".into(),
+            prompt: "Orchestrate build workflows, test executions, and package validations efficiently.".into(),
+            allowed_tools: vec!["run_command".into(), "git".into()],
+            always_on: false,
+            slash_command: "/automate".into(),
+        },
+        SkillConfig {
+            id: "reverse_engineering".into(),
+            name: "Reverse Engineering (REA)".into(),
+            category: "Binary Analysis".into(),
+            description: "Disassembles, inspects PE/ELF/APK symbols, and recovers native boundaries.".into(),
+            prompt: "Inspect binary layouts, decompile symbols, and trace native UI dispatch pathways.".into(),
+            allowed_tools: vec!["rea".into()],
+            always_on: false,
+            slash_command: "/rea".into(),
+        },
+        SkillConfig {
+            id: "locus_compression".into(),
+            name: "LOCUS Zero-Blind Token Compression".into(),
+            category: "LOCUS Core".into(),
+            description: "Enforces AST skeleton extraction before reading full files (-86% token savings).".into(),
+            prompt: "Always slice and extract AST skeletons before inspecting large source code files.".into(),
+            allowed_tools: vec!["locus_skeleton".into(), "locus_slice".into(), "locus_impact".into()],
+            always_on: true,
+            slash_command: "/locus".into(),
+        },
+    ]
+}
+
+#[tauri::command]
+fn get_skills_config() -> Vec<SkillConfig> {
+    let file = get_skills_file();
+    if let Ok(bytes) = fs::read_to_string(&file) {
+        if let Ok(skills) = serde_json::from_str::<Vec<SkillConfig>>(&bytes) {
+            return skills;
+        }
+    }
+    let defaults = default_skills();
+    let _ = save_skills_config(defaults.clone());
+    defaults
+}
+
+#[tauri::command]
+fn save_skills_config(skills: Vec<SkillConfig>) -> Result<(), String> {
+    let file = get_skills_file();
+    let json = serde_json::to_string_pretty(&skills).map_err(|e| e.to_string())?;
+    fs::write(&file, json).map_err(|e| format!("Failed to write skills config: {}", e))
+}
+
+#[tauri::command]
+fn toggle_skill(id: String, always_on: bool) -> Result<Vec<SkillConfig>, String> {
+    let mut skills = get_skills_config();
+    if let Some(skill) = skills.iter_mut().find(|s| s.id == id) {
+        skill.always_on = always_on;
+    }
+    save_skills_config(skills.clone())?;
+    Ok(skills)
+}
+
+#[tauri::command]
+fn get_pinned_models() -> Vec<String> {
+    let file = get_opencode_home().join("pinned_models.json");
+    if let Ok(bytes) = fs::read_to_string(&file) {
+        if let Ok(models) = serde_json::from_str::<Vec<String>>(&bytes) {
+            return models;
+        }
+    }
+    vec![
+        "groq/llama-3.3-70b-versatile".into(),
+        "gemini/gemini-1.5-flash".into(),
+        "nvidia/meta/llama-3.3-70b-instruct".into(),
+        "openrouter/meta-llama/llama-3.3-70b-instruct:free".into(),
+    ]
+}
+
+#[tauri::command]
+fn save_pinned_models(models: Vec<String>) -> Result<(), String> {
+    let file = get_opencode_home().join("pinned_models.json");
+    let json = serde_json::to_string_pretty(&models).map_err(|e| e.to_string())?;
+    fs::write(&file, json).map_err(|e| format!("Failed to save pinned models: {}", e))
+}
+
+#[tauri::command]
+async fn verify_provider_models(
+    provider: String,
+    api_key: String,
+) -> Result<Vec<String>, String> {
+    let clean_key = api_key.trim();
+    if clean_key.is_empty() {
+        return Err("API key cannot be empty".to_string());
+    }
+
+    let url = match provider.to_lowercase().as_str() {
+        "groq" => "https://api.groq.com/openai/v1/models",
+        "gemini" => "https://generativelanguage.googleapis.com/v1beta/openai/models",
+        "nvidia" => "https://integrate.api.nvidia.com/v1/models",
+        "openrouter" => "https://openrouter.ai/api/v1/models",
+        _ => return Err(format!("Unsupported provider: {}", provider)),
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Client creation failed: {}", e))?;
+
+    let mut req = client.get(url)
+        .header("Authorization", format!("Bearer {}", clean_key))
+        .header("User-Agent", "OpenCode-Desktop/2.0.32");
+
+    if provider.to_lowercase() == "openrouter" {
+        req = req.header("HTTP-Referer", "https://opencode.ai")
+                 .header("X-Title", "OpenCode Sovereign");
+    }
+
+    let res = req.send().await.map_err(|e| format!("Connection error: {}", e))?;
+    let status = res.status();
+    let text = res.text().await.map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Provider returned HTTP {}: {}", status, text));
+    }
+
+    // Auto-save the verified key to the vault
+    let mut vault = load_vault();
+    vault.insert(provider.to_lowercase(), clean_key.to_string());
+    let _ = save_vault(&vault);
+
+    // Parse models list
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse response JSON: {}", e))?;
+
+    let mut models = Vec::new();
+    if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
+                models.push(id.to_string());
+            }
+        }
+    } else if let Some(items) = parsed.get("models").and_then(|m| m.as_array()) {
+        for item in items {
+            if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+                let id = name.trim_start_matches("models/").to_string();
+                models.push(id);
+            }
+        }
+    }
+
+    models.sort();
+    Ok(models)
+}
+
+#[tauri::command]
+fn apply_diff_action(path: String, code: String, accept: bool) -> Result<String, String> {
+    if !accept {
+        return Ok(format!("✕ Diff for '{}' was rejected by user.", path));
+    }
+
+    let p = std::path::Path::new(&path);
+    if p.exists() {
+        let bak = format!("{}.bak", path);
+        let _ = fs::copy(&path, bak);
+        fs::write(&path, &code).map_err(|e| format!("Failed to apply patch: {}", e))?;
+        Ok(format!("✓ Patch applied successfully to '{}'", path))
+    } else {
+        if let Some(parent) = p.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&path, &code).map_err(|e| format!("Failed to create file: {}", e))?;
+        Ok(format!("✓ Created and applied '{}'", path))
+    }
+}
+
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -868,6 +1188,18 @@ pub fn run() {
             get_api_key,
             list_saved_providers,
             list_available_models,
+            verify_provider_models,
+            get_mcp_config,
+            save_mcp_config,
+            toggle_mcp_server,
+            get_raw_mcp_json,
+            save_raw_mcp_json,
+            get_skills_config,
+            save_skills_config,
+            toggle_skill,
+            get_pinned_models,
+            save_pinned_models,
+            apply_diff_action,
             execute_session_turn,
             open_external_url,
             send_ai_chat_request
