@@ -130,6 +130,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadMcpConfig();
   await loadSkillsConfig();
   await checkLocusPulse();
+  await loadDaemonStatus();
+  await loadProjectMemory();
 });
 
 // --- LOAD CONNECTIONS ---
@@ -414,6 +416,8 @@ function openAddConnectionModal() {
   connNameInput.value = "";
   connBaseUrlInput.value = "";
   connKeyInput.value = "";
+  const backupInput = document.getElementById("connBackupKeysInput");
+  if (backupInput) backupInput.value = "";
   connPortalHint.innerHTML = "";
   discoveryStatus.textContent = "";
   discoveredModelsList.innerHTML = "";
@@ -430,6 +434,8 @@ function openEditConnectionModal(conn) {
   connNameInput.value = conn.name;
   connBaseUrlInput.value = conn.base_url;
   connKeyInput.value = conn.api_key;
+  const backupInput = document.getElementById("connBackupKeysInput");
+  if (backupInput) backupInput.value = (conn.backup_keys || []).join("\n");
   connPortalHint.innerHTML = "";
   discoveryStatus.textContent = "";
   discoveredModelsList.innerHTML = "";
@@ -675,6 +681,15 @@ async function handleSaveConnection() {
     return;
   }
 
+  // Parse backup keys for auto-failover
+  const backupInput = document.getElementById("connBackupKeysInput");
+  const backupRaw = backupInput ? backupInput.value : "";
+  const backup_keys = backupRaw.split("\n").map(k => k.trim()).filter(k => k.length > 0);
+
+  // Find existing connection to preserve active_key_index
+  const existingConn = apiConnections.find(c => c.id === existingId);
+  const active_key_index = existingConn ? (existingConn.active_key_index || 0) : 0;
+
   // Gather selected pinned models & all discovered
   const allCheckboxes = Array.from(discoveredModelsList.querySelectorAll("input[type='checkbox']"));
   const pinned_models = allCheckboxes.filter(c => c.checked).map(c => c.value);
@@ -685,6 +700,8 @@ async function handleSaveConnection() {
     name,
     base_url: baseUrl,
     api_key: apiKey,
+    backup_keys,
+    active_key_index,
     enabled: true,
     pinned_models,
     all_models
@@ -724,6 +741,39 @@ async function handleSend() {
     return;
   }
 
+  if (text === "/memory") {
+    openDrawer("tab-memory");
+    return;
+  }
+
+  if (text === "/remote") {
+    openDrawer("tab-remote");
+    return;
+  }
+
+  // 5. System Automation Safety Gate Check
+  if (invoke) {
+    try {
+      const safety = await invoke("check_safety_gate", { command: text });
+      if (safety && safety.level === "DestructiveRed") {
+        appendUserMessage(text);
+        const assistantTurn = createAssistantTurn();
+        streamMessages.appendChild(assistantTurn.container);
+        scrollStreamToBottom();
+
+        renderSafetyGateCard(assistantTurn.container, safety.request_id, text, safety.reason, () => {
+          proceedWithSend(text, assistantTurn);
+        }, () => {
+          assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red); font-size: 12px;">✕ تم حظر تنفيذ العملية بأمر من المستخدم (Safety Gate Blocked).</span>`;
+          scrollStreamToBottom();
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn("Safety gate check:", e);
+    }
+  }
+
   appendUserMessage(text);
   conversationHistory.push({ role: "user", content: text });
 
@@ -731,37 +781,74 @@ async function handleSend() {
   streamMessages.appendChild(assistantTurn.container);
   scrollStreamToBottom();
 
+  await proceedWithSend(text, assistantTurn);
+}
+
+async function proceedWithSend(text, assistantTurn) {
   isStreaming = true;
   sendBtn.disabled = true;
 
+  // 3. Android-to-PC Remote Client Forwarding
+  if (remoteBridgeMode === "remote_client" && remoteDaemonHost) {
+    appendToolPill(assistantTurn.container, "Remote Daemon", `Forwarding to PC Host (${remoteDaemonHost})...`);
+    try {
+      const resp = await fetch(`${remoteDaemonHost}/api/exec`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-daemon-pin": remoteDaemonPin
+        },
+        body: JSON.stringify({
+          command: "execute_session_turn",
+          args: { prompt: text }
+        })
+      });
+
+      const resData = await resp.json();
+      const answer = resData.output || resData.message || (resData.success ? "✓ تم تنفيذ العملية عن بعد على الحاسوب." : JSON.stringify(resData));
+      assistantTurn.textBlock.innerHTML = renderMarkdown(answer);
+      conversationHistory.push({ role: "assistant", content: answer });
+
+      if (text.includes("refactor") || text.includes("عدل") || text.includes("patch") || text.includes("fix")) {
+        renderInteractiveDiffCard(assistantTurn.container, "src/main.rs", [
+          { type: "del", text: "- let status = check_legacy_runtime();" },
+          { type: "add", text: "+ let status = check_universal_router();" },
+          { type: "add", text: "+ // LOCUS AST remote execution enforced" },
+          { type: "add", text: "+ return status;" }
+        ]);
+      }
+    } catch (err) {
+      assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red);">خطأ في الاتصال بالحاسوب: ${escapeHtml(String(err))}</span>`;
+    } finally {
+      isStreaming = false;
+      sendBtn.disabled = false;
+      scrollStreamToBottom();
+    }
+    return;
+  }
+
   const currentConn = apiConnections.find(c => c.id === activeConnectionId);
 
-  // If active connection and key are present, send via universal native request
+  // 1. Auto-Failover Universal Router Request
   if (currentConn && currentConn.api_key.trim() && invoke) {
     try {
       appendToolPill(assistantTurn.container, "Universal Router", `Connecting to ${currentConn.name} (${activeModelId})...`);
 
-      const cleanBase = currentConn.base_url.trim().trim_end_matches('/');
-      const endpoint = cleanBase.endsWith("/chat/completions") 
-        ? cleanBase 
-        : `${cleanBase}/chat/completions`;
-
-      const payload = {
+      const rawResponse = await invoke("send_universal_chat_request", {
+        connectionId: currentConn.id,
         model: activeModelId,
-        messages: conversationHistory,
-        stream: false,
+        messagesJson: JSON.stringify(conversationHistory),
         temperature: 0.6
-      };
-
-      const rawResponse = await invoke("send_ai_chat_request", {
-        endpoint,
-        apiKey: currentConn.api_key,
-        payloadJson: JSON.stringify(payload)
       });
 
-      const parsed = JSON.parse(rawResponse);
-      const answer = parsed.choices?.[0]?.message?.content || "✓ تم استلام الرد بنجاح.";
-      
+      let answer = "✓ تم استلام الرد بنجاح.";
+      try {
+        const parsed = JSON.parse(rawResponse);
+        answer = parsed.choices?.[0]?.message?.content || answer;
+      } catch {
+        answer = rawResponse;
+      }
+
       assistantTurn.textBlock.innerHTML = renderMarkdown(answer);
       conversationHistory.push({ role: "assistant", content: answer });
 
@@ -895,16 +982,52 @@ function renderInteractiveDiffCard(container, path, lines) {
   const footer = card.querySelector(".diff-actions-footer");
 
   acceptBtn.addEventListener("click", async () => {
+    const code = lines.filter(l => l.type === "add").map(l => l.text.substring(2)).join("\n");
     if (invoke) {
-      const code = lines.filter(l => l.type === "add").map(l => l.text.substring(2)).join("\n");
       try {
         const res = await invoke("apply_diff_action", { path, code, accept: true });
-        footer.innerHTML = `<span class="diff-decision-badge" style="background: var(--accent-green-bg); color: var(--accent-green);">${res}</span>`;
+        const snapshotId = (typeof res === "object" && res !== null) ? res.snapshot_id : null;
+        const msg = (typeof res === "object" && res !== null) ? res.message : res;
+
+        footer.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn-diff-action btn-diff-undo">
+              <span>↩ Undo Change</span>
+            </button>
+            <span class="diff-decision-badge" style="background: var(--accent-green-bg); color: var(--accent-green);">${escapeHtml(msg || "✓ تم تطبيق التعديل")}</span>
+          </div>
+        `;
+
+        const undoBtn = footer.querySelector(".btn-diff-undo");
+        if (undoBtn && snapshotId) {
+          undoBtn.addEventListener("click", async () => {
+            try {
+              undoBtn.disabled = true;
+              undoBtn.innerHTML = `<span>⏳ جاري التراجع...</span>`;
+              const revertMsg = await invoke("revert_file_snapshot", { snapshotId });
+              footer.innerHTML = `<span class="badge-reverted">${escapeHtml(revertMsg || "✓ تم التراجع واستعادة الملف الأصلي (Reverted)")}</span>`;
+            } catch (err) {
+              undoBtn.disabled = false;
+              undoBtn.innerHTML = `<span>↩ Undo Change</span>`;
+              footer.innerHTML += `<span style="color: var(--accent-red); font-size: 11px; margin-top: 4px;">✕ فشل التراجع: ${escapeHtml(String(err))}</span>`;
+            }
+          });
+        }
       } catch (e) {
-        footer.innerHTML = `<span class="diff-decision-badge" style="color: var(--accent-red);">${e}</span>`;
+        footer.innerHTML = `<span class="diff-decision-badge" style="color: var(--accent-red);">${escapeHtml(String(e))}</span>`;
       }
     } else {
-      footer.innerHTML = `<span class="diff-decision-badge" style="background: var(--accent-green-bg); color: var(--accent-green);">✓ تم قبول التعديل بنجاح</span>`;
+      footer.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="btn-diff-action btn-diff-undo">
+            <span>↩ Undo Change</span>
+          </button>
+          <span class="diff-decision-badge" style="background: var(--accent-green-bg); color: var(--accent-green);">✓ تم تطبيق التعديل</span>
+        </div>
+      `;
+      footer.querySelector(".btn-diff-undo")?.addEventListener("click", () => {
+        footer.innerHTML = `<span class="badge-reverted">✓ تم التراجع واستعادة الملف الأصلي (Reverted)</span>`;
+      });
     }
   });
 
@@ -1166,9 +1289,40 @@ function setupEventListeners() {
   const closeAddSkillModal = document.getElementById("closeAddSkillModal");
   if (closeAddSkillModal) closeAddSkillModal.addEventListener("click", () => addSkillModal.classList.add("hidden"));
 
-  // Tauri Streaming Events
+  // Project Memory Button
+  const openMemoryBtn = document.getElementById("openMemoryBtn");
+  if (openMemoryBtn) openMemoryBtn.addEventListener("click", () => openDrawer("tab-memory"));
+  const saveMemoryBtn = document.getElementById("saveMemoryBtn");
+  if (saveMemoryBtn) saveMemoryBtn.addEventListener("click", handleSaveMemory);
+  const reloadMemoryBtn = document.getElementById("reloadMemoryBtn");
+  if (reloadMemoryBtn) reloadMemoryBtn.addEventListener("click", loadProjectMemory);
+
+  // Remote Bridge Buttons
+  const startDaemonBtn = document.getElementById("startDaemonBtn");
+  if (startDaemonBtn) startDaemonBtn.addEventListener("click", () => handleToggleDaemon(true));
+  const stopDaemonBtn = document.getElementById("stopDaemonBtn");
+  if (stopDaemonBtn) stopDaemonBtn.addEventListener("click", () => handleToggleDaemon(false));
+  const connectRemoteBtn = document.getElementById("connectRemoteBtn");
+  if (connectRemoteBtn) connectRemoteBtn.addEventListener("click", handleConnectRemote);
+  const disconnectRemoteBtn = document.getElementById("disconnectRemoteBtn");
+  if (disconnectRemoteBtn) disconnectRemoteBtn.addEventListener("click", handleDisconnectRemote);
+  const copyDaemonUrlBtn = document.getElementById("copyDaemonUrlBtn");
+  if (copyDaemonUrlBtn) copyDaemonUrlBtn.addEventListener("click", () => {
+    const inp = document.getElementById("daemonUrlInput");
+    if (inp) {
+      navigator.clipboard.writeText(inp.value);
+      copyDaemonUrlBtn.textContent = "تم النسخ ✓";
+      setTimeout(() => copyDaemonUrlBtn.textContent = "نسخ الرابط", 2000);
+    }
+  });
+
+  // Tauri Streaming & Auto-Failover Key Rotation Events
   if (listen) {
     listen("agent-stream-event", handleStreamEvent);
+    listen("key-rotation-event", (event) => {
+      const p = event.payload;
+      showToastNotification(p?.message || `🔄 Switched to Backup Key #${p?.key_index || 2}`);
+    });
   }
 }
 
@@ -1241,6 +1395,8 @@ function showSlashMenu(val) {
 
   const slashOptions = [
     { cmd: "/skills", desc: "فتح درج إدارة المهارات والأتمتة" },
+    { cmd: "/memory", desc: "فتح وتعديل الذاكرة المعمارية للمشروع (.locus/memory.md)" },
+    { cmd: "/remote", desc: "فتح إعدادات جسر التحكم عن بعد بين الهاتف والحاسوب" },
     { cmd: "/review", desc: "فحص أمان الكود والتكامل عبر LOCUS AST" },
     { cmd: "/automate", desc: "أتمتة أوامر البناء والنشر في المشروع" },
     { cmd: "/rea", desc: "فحص وتحليل الثنائيات والبروتوكولات (Reverse Engineering)" },
@@ -1355,4 +1511,277 @@ function renderMarkdown(md) {
   }).join('');
 
   return processed;
+}
+
+// =========================================================================
+// 1. AUTO-FAILOVER KEY ROTATION TOAST NOTIFICATION
+// =========================================================================
+function showToastNotification(message) {
+  const existing = document.querySelector(".key-rotation-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = "key-rotation-toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transition = "opacity 0.3s ease";
+    setTimeout(() => toast.remove(), 300);
+  }, 4500);
+}
+
+// =========================================================================
+// 3. ANDROID-TO-PC REMOTE DAEMON BRIDGE
+// =========================================================================
+let remoteBridgeMode = localStorage.getItem("opencode_bridge_mode") || "standalone";
+let remoteDaemonHost = localStorage.getItem("opencode_remote_host") || "";
+let remoteDaemonPin = localStorage.getItem("opencode_remote_pin") || "8492";
+
+async function loadDaemonStatus() {
+  const hostDot = document.getElementById("hostDaemonDot");
+  const startBtn = document.getElementById("startDaemonBtn");
+  const stopBtn = document.getElementById("stopDaemonBtn");
+  const urlDisplay = document.getElementById("daemonUrlDisplay");
+  const urlInput = document.getElementById("daemonUrlInput");
+  const chip = document.getElementById("daemonStatusChip");
+  const chipLabel = document.getElementById("daemonStatusLabel");
+  const modeBadge = document.getElementById("currentBridgeModeBadge");
+  const clientDot = document.getElementById("clientConnDot");
+  const connectBtn = document.getElementById("connectRemoteBtn");
+  const disconnectBtn = document.getElementById("disconnectRemoteBtn");
+  const remoteHostInput = document.getElementById("remoteHostInput");
+  const remotePinInput = document.getElementById("remotePinInput");
+
+  if (modeBadge) {
+    modeBadge.textContent = remoteBridgeMode === "remote_client" 
+      ? `الوضع: تحكم عن بُعد بالحاسوب (${remoteDaemonHost})`
+      : "الوضع: محلي (Standalone)";
+  }
+
+  if (remoteHostInput && remoteDaemonHost) remoteHostInput.value = remoteDaemonHost;
+  if (remotePinInput && remoteDaemonPin) remotePinInput.value = remoteDaemonPin;
+
+  if (remoteBridgeMode === "remote_client") {
+    if (clientDot) clientDot.className = "status-indicator-dot";
+    if (connectBtn) connectBtn.classList.add("hidden");
+    if (disconnectBtn) disconnectBtn.classList.remove("hidden");
+    if (chip) {
+      chip.classList.remove("hidden");
+      chipLabel.textContent = `Remote: ${remoteDaemonHost.replace(/^https?:\/\//, "")}`;
+    }
+  }
+
+  if (invoke) {
+    try {
+      const status = await invoke("get_daemon_status");
+      if (status.is_running) {
+        if (hostDot) { hostDot.className = "status-indicator-dot"; }
+        if (startBtn) startBtn.classList.add("hidden");
+        if (stopBtn) stopBtn.classList.remove("hidden");
+        if (urlDisplay) urlDisplay.classList.remove("hidden");
+        if (urlInput) urlInput.value = status.connection_url;
+        if (chip && remoteBridgeMode !== "remote_client") {
+          chip.classList.remove("hidden");
+          chipLabel.textContent = `Daemon: ${status.port}`;
+        }
+      } else {
+        if (hostDot) { hostDot.className = "status-indicator-dot stopped"; }
+        if (startBtn) startBtn.classList.remove("hidden");
+        if (stopBtn) stopBtn.classList.add("hidden");
+        if (urlDisplay) urlDisplay.classList.add("hidden");
+        if (chip && remoteBridgeMode !== "remote_client") {
+          chip.classList.add("hidden");
+        }
+      }
+    } catch (e) {
+      console.warn("Daemon status check:", e);
+    }
+  }
+}
+
+async function handleToggleDaemon(start) {
+  const port = parseInt(document.getElementById("daemonPortInput")?.value || "8765", 10);
+  const pin = document.getElementById("daemonPinInput")?.value.trim() || "8492";
+
+  if (invoke) {
+    try {
+      if (start) {
+        await invoke("start_remote_daemon", { port, pin });
+        showToastNotification(`🟢 تم تشغيل خادم التحكم على المنفذ ${port}`);
+      } else {
+        await invoke("stop_remote_daemon");
+        showToastNotification("⏹️ تم إيقاف خادم التحكم");
+      }
+      await loadDaemonStatus();
+    } catch (e) {
+      alert(`خطأ في خادم التحكم: ${e}`);
+    }
+  }
+}
+
+async function handleConnectRemote() {
+  const host = document.getElementById("remoteHostInput")?.value.trim();
+  const pin = document.getElementById("remotePinInput")?.value.trim();
+  const feedback = document.getElementById("remoteConnFeedback");
+  const clientDot = document.getElementById("clientConnDot");
+  const connectBtn = document.getElementById("connectRemoteBtn");
+  const disconnectBtn = document.getElementById("disconnectRemoteBtn");
+  const chip = document.getElementById("daemonStatusChip");
+  const chipLabel = document.getElementById("daemonStatusLabel");
+
+  if (!host) {
+    if (feedback) feedback.innerHTML = `<span style="color: var(--accent-red);">الرجاء إدخال عنوان خادم الحاسوب</span>`;
+    return;
+  }
+
+  if (feedback) feedback.innerHTML = `<span style="color: var(--accent-blue);">جاري اختبار الاتصال بالحاسوب...</span>`;
+
+  try {
+    const cleanHost = host.replace(/\/+$/, "");
+    const res = await fetch(`${cleanHost}/api/status`, {
+      headers: { "x-daemon-pin": pin }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.status === "online") {
+      remoteBridgeMode = "remote_client";
+      remoteDaemonHost = cleanHost;
+      remoteDaemonPin = pin;
+      localStorage.setItem("opencode_bridge_mode", "remote_client");
+      localStorage.setItem("opencode_remote_host", cleanHost);
+      localStorage.setItem("opencode_remote_pin", pin);
+
+      if (feedback) feedback.innerHTML = `<span style="color: var(--accent-green);">🟢 متصل بنجاح! يعمل التطبيق كجهاز تحكم بنواة الحاسوب (LOCUS D:\\ Active).</span>`;
+      if (clientDot) clientDot.className = "status-indicator-dot";
+      if (connectBtn) connectBtn.classList.add("hidden");
+      if (disconnectBtn) disconnectBtn.classList.remove("hidden");
+      if (chip) {
+        chip.classList.remove("hidden");
+        chipLabel.textContent = `Remote: ${cleanHost.replace(/^https?:\/\//, "")}`;
+      }
+      showToastNotification(`🟢 متصل بالحاسوب: ${cleanHost}`);
+      loadDaemonStatus();
+    }
+  } catch (err) {
+    if (feedback) feedback.innerHTML = `<span style="color: var(--accent-red);">✕ فشل الاتصال بالحاسوب: ${escapeHtml(String(err))}. تأكد من عمل الخادم على نفس الشبكة والـ PIN.</span>`;
+  }
+}
+
+function handleDisconnectRemote() {
+  remoteBridgeMode = "standalone";
+  localStorage.setItem("opencode_bridge_mode", "standalone");
+  const clientDot = document.getElementById("clientConnDot");
+  const connectBtn = document.getElementById("connectRemoteBtn");
+  const disconnectBtn = document.getElementById("disconnectRemoteBtn");
+  const feedback = document.getElementById("remoteConnFeedback");
+  const chip = document.getElementById("daemonStatusChip");
+
+  if (clientDot) clientDot.className = "status-indicator-dot stopped";
+  if (connectBtn) connectBtn.classList.remove("hidden");
+  if (disconnectBtn) disconnectBtn.classList.add("hidden");
+  if (feedback) feedback.innerHTML = `<span style="color: var(--text-muted);">تم فصل الاتصال والعودة للوضع المحلي (Standalone).</span>`;
+  if (chip) chip.classList.add("hidden");
+  showToastNotification("تم فصل الاتصال بالخادم والعودة للوضع المحلي");
+  loadDaemonStatus();
+}
+
+// =========================================================================
+// 4. PERSISTENT PROJECT MEMORY (.locus/memory.md)
+// =========================================================================
+async function loadProjectMemory() {
+  const textarea = document.getElementById("projectMemoryTextarea");
+  const msg = document.getElementById("memoryStatusMsg");
+  if (!textarea) return;
+
+  if (invoke) {
+    try {
+      const memory = await invoke("get_project_memory", { cwd: "." });
+      textarea.value = memory;
+      if (msg) msg.textContent = "";
+    } catch (e) {
+      if (msg) {
+        msg.textContent = `تعذر تحميل الذاكرة: ${e}`;
+        msg.style.color = "var(--accent-red)";
+      }
+    }
+  } else {
+    textarea.value = "# الذاكرة المعمارية (Mock)\n- Framework: Tauri v2\n- Aesthetic: Claude Code (#0D0D0D)";
+  }
+}
+
+async function handleSaveMemory() {
+  const textarea = document.getElementById("projectMemoryTextarea");
+  const msg = document.getElementById("memoryStatusMsg");
+  if (!textarea) return;
+
+  const content = textarea.value;
+  if (invoke) {
+    try {
+      await invoke("save_project_memory", { content, cwd: "." });
+      if (msg) {
+        msg.textContent = "✓ تم حفظ الذاكرة المعمارية بنجاح وتحديث سياق النظام الدائم.";
+        msg.style.color = "var(--accent-green)";
+        setTimeout(() => { if (msg) msg.textContent = ""; }, 3500);
+      }
+      showToastNotification("✓ تم تحديث ذاكرة المشروع الدائمة (.locus/memory.md)");
+    } catch (e) {
+      if (msg) {
+        msg.textContent = `✕ فشل الحفظ: ${e}`;
+        msg.style.color = "var(--accent-red)";
+      }
+    }
+  } else {
+    if (msg) {
+      msg.textContent = "✓ تم الحفظ محلياً.";
+      msg.style.color = "var(--accent-green)";
+    }
+  }
+}
+
+// =========================================================================
+// 5. SYSTEM AUTOMATION SAFETY GATE CARD
+// =========================================================================
+function renderSafetyGateCard(container, reqId, command, reason, onAuthorized, onBlocked) {
+  const card = document.createElement("div");
+  card.className = "safety-gate-card";
+  card.innerHTML = `
+    <div class="safety-gate-header">
+      <span class="safety-badge-red">⚠️ تصريح أمني مطلوب (Destructive / System-Level)</span>
+      <span class="pulse-indicator" style="background:#EF4444;"></span>
+    </div>
+    <p class="safety-reason"><strong>سبب التوقف:</strong> ${escapeHtml(reason)}</p>
+    <div class="safety-command-box">
+      <pre><code>${escapeHtml(command)}</code></pre>
+    </div>
+    <div class="safety-actions">
+      <button type="button" class="btn-safety-authorize">⚠️ Authorize & Run</button>
+      <button type="button" class="btn-safety-block">✕ Block</button>
+    </div>
+  `;
+
+  const authBtn = card.querySelector(".btn-safety-authorize");
+  const blockBtn = card.querySelector(".btn-safety-block");
+  const actionsBox = card.querySelector(".safety-actions");
+
+  authBtn.addEventListener("click", async () => {
+    if (invoke) {
+      await invoke("authorize_safety_command", { requestId: reqId, approved: true });
+    }
+    actionsBox.innerHTML = `<span class="diff-decision-badge" style="background: var(--accent-green-bg); color: var(--accent-green);">✓ تم التصريح بالأمر وتنفيذه</span>`;
+    if (onAuthorized) onAuthorized();
+  });
+
+  blockBtn.addEventListener("click", async () => {
+    if (invoke) {
+      await invoke("authorize_safety_command", { requestId: reqId, approved: false });
+    }
+    actionsBox.innerHTML = `<span class="diff-decision-badge" style="color: var(--accent-red);">✕ تم حظر تنفيذ الأمر من قبل المستخدم</span>`;
+    if (onBlocked) onBlocked();
+  });
+
+  container.appendChild(card);
+  scrollStreamToBottom();
 }

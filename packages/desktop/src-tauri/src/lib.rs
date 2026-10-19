@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use tauri::Emitter;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LocusStatus {
@@ -63,9 +65,44 @@ pub struct ApiConnection {
     pub name: String,
     pub base_url: String,
     pub api_key: String,
+    #[serde(default)]
+    pub backup_keys: Vec<String>,
+    #[serde(default)]
+    pub active_key_index: usize,
     pub enabled: bool,
     pub pinned_models: Vec<String>,
     pub all_models: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSnapshot {
+    pub snapshot_id: String,
+    pub file_path: String,
+    pub original_content: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DaemonConfig {
+    pub is_running: bool,
+    pub port: u16,
+    pub pin: String,
+    pub local_ip: String,
+    pub connection_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SafetyLevel {
+    SafeGreen,
+    DestructiveRed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetyCheckResult {
+    pub level: SafetyLevel,
+    pub command: String,
+    pub reason: String,
+    pub request_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1113,25 +1150,94 @@ async fn verify_provider_models(
     Ok(models)
 }
 
+fn get_snapshots_dir() -> PathBuf {
+    let p = get_opencode_home().join("snapshots");
+    let _ = fs::create_dir_all(&p);
+    p
+}
+
 #[tauri::command]
-fn apply_diff_action(path: String, code: String, accept: bool) -> Result<String, String> {
-    if !accept {
-        return Ok(format!("✕ Diff for '{}' was rejected by user.", path));
+fn create_file_snapshot(file_path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&file_path);
+    let original_content = if p.exists() {
+        fs::read_to_string(p).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let snapshot_id = format!("snap_{}", now);
+
+    let snap = FileSnapshot {
+        snapshot_id: snapshot_id.clone(),
+        file_path: file_path.clone(),
+        original_content,
+        timestamp: now as u64,
+    };
+
+    let snap_file = get_snapshots_dir().join(format!("{}.json", snapshot_id));
+    let json = serde_json::to_string_pretty(&snap).map_err(|e| e.to_string())?;
+    fs::write(snap_file, json).map_err(|e| format!("Failed to save snapshot: {}", e))?;
+
+    Ok(snapshot_id)
+}
+
+#[tauri::command]
+fn revert_file_snapshot(snapshot_id: String) -> Result<String, String> {
+    let snap_file = get_snapshots_dir().join(format!("{}.json", snapshot_id));
+    if !snap_file.exists() {
+        return Err(format!("Snapshot '{}' not found", snapshot_id));
     }
 
-    let p = std::path::Path::new(&path);
-    if p.exists() {
-        let bak = format!("{}.bak", path);
-        let _ = fs::copy(&path, bak);
-        fs::write(&path, &code).map_err(|e| format!("Failed to apply patch: {}", e))?;
-        Ok(format!("✓ Patch applied successfully to '{}'", path))
-    } else {
-        if let Some(parent) = p.parent() {
-            let _ = fs::create_dir_all(parent);
+    let json = fs::read_to_string(&snap_file).map_err(|e| e.to_string())?;
+    let snap: FileSnapshot = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+
+    let p = std::path::Path::new(&snap.file_path);
+    if snap.original_content.is_empty() {
+        if p.exists() {
+            let _ = fs::remove_file(p);
         }
-        fs::write(&path, &code).map_err(|e| format!("Failed to create file: {}", e))?;
-        Ok(format!("✓ Created and applied '{}'", path))
+        return Ok(format!("✓ تم التراجع بنجاح: تمت إزالة الملف المُنشأ حديثاً '{}'", snap.file_path));
     }
+
+    if let Some(parent) = p.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&snap.file_path, &snap.original_content)
+        .map_err(|e| format!("Failed to revert file: {}", e))?;
+
+    Ok(format!("✓ تم التراجع واستعادة الملف '{}' لحالته الأصلية بالبايت الواحد.", snap.file_path))
+}
+
+#[tauri::command]
+fn apply_diff_action(path: String, code: String, accept: bool) -> Result<serde_json::Value, String> {
+    if !accept {
+        return Ok(serde_json::json!({
+            "success": false,
+            "status": "rejected",
+            "message": format!("✕ تم رفض التعديل على الملف '{}'.", path),
+            "snapshot_id": null
+        }));
+    }
+
+    // 1. Take snapshot before applying diff
+    let snapshot_id = create_file_snapshot(path.clone())?;
+
+    let p = std::path::Path::new(&path);
+    if let Some(parent) = p.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, &code).map_err(|e| format!("Failed to apply patch: {}", e))?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "status": "accepted",
+        "message": format!("✓ تم تطبيق التعديل بنجاح على '{}'", path),
+        "snapshot_id": snapshot_id
+    }))
 }
 
 fn get_connections_file() -> PathBuf {
@@ -1155,6 +1261,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 name: "Groq Cloud".into(),
                 base_url: "https://api.groq.com/openai/v1".into(),
                 api_key: key.trim().to_string(),
+                backup_keys: Vec::new(),
+                active_key_index: 0,
                 enabled: true,
                 pinned_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into()],
                 all_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into(), "mixtral-8x7b-32768".into()],
@@ -1168,6 +1276,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 name: "Google Gemini".into(),
                 base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
                 api_key: key.trim().to_string(),
+                backup_keys: Vec::new(),
+                active_key_index: 0,
                 enabled: true,
                 pinned_models: vec!["gemini-1.5-flash".into()],
                 all_models: vec!["gemini-1.5-flash".into(), "gemini-2.0-flash".into(), "gemini-1.5-pro".into()],
@@ -1181,6 +1291,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 name: "NVIDIA NIM".into(),
                 base_url: "https://integrate.api.nvidia.com/v1".into(),
                 api_key: key.trim().to_string(),
+                backup_keys: Vec::new(),
+                active_key_index: 0,
                 enabled: true,
                 pinned_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
                 all_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
@@ -1194,6 +1306,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 name: "OpenRouter".into(),
                 base_url: "https://openrouter.ai/api/v1".into(),
                 api_key: key.trim().to_string(),
+                backup_keys: Vec::new(),
+                active_key_index: 0,
                 enabled: true,
                 pinned_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into()],
                 all_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into(), "deepseek/deepseek-r1:free".into()],
@@ -1545,19 +1659,21 @@ async fn validate_and_fetch_models(
 
 #[tauri::command]
 async fn send_universal_chat_request(
+    app: tauri::AppHandle,
     connection_id: String,
     model: String,
     messages_json: String,
     temperature: Option<f32>,
 ) -> Result<String, String> {
-    let conns = load_connections();
-    let conn = if !connection_id.trim().is_empty() {
-        conns.iter().find(|c| c.id == connection_id)
+    let mut conns = load_connections();
+    let conn_idx = if !connection_id.trim().is_empty() {
+        conns.iter().position(|c| c.id == connection_id)
     } else {
-        conns.iter().find(|c| c.pinned_models.contains(&model) || c.all_models.contains(&model))
+        conns.iter().position(|c| c.pinned_models.contains(&model) || c.all_models.contains(&model))
     };
 
-    let conn = conn.ok_or_else(|| format!("API Connection not found for model '{}'", model))?;
+    let conn_idx = conn_idx.ok_or_else(|| format!("API Connection not found for model '{}'", model))?;
+    let conn = &conns[conn_idx];
     if !conn.enabled {
         return Err(format!("Connection '{}' is disabled", conn.name));
     }
@@ -1579,7 +1695,57 @@ async fn send_universal_chat_request(
         "stream": false
     });
 
-    send_ai_chat_request(endpoint, conn.api_key.clone(), payload.to_string()).await
+    // Auto-Failover Priority Pool: Primary key followed by backup keys
+    let mut key_pool: Vec<String> = Vec::new();
+    if !conn.api_key.trim().is_empty() {
+        key_pool.push(conn.api_key.trim().to_string());
+    }
+    for bk in &conn.backup_keys {
+        let trimmed = bk.trim();
+        if !trimmed.is_empty() && !key_pool.contains(&trimmed.to_string()) {
+            key_pool.push(trimmed.to_string());
+        }
+    }
+
+    if key_pool.is_empty() {
+        return Err(format!("No API keys configured for connection '{}'", conn.name));
+    }
+
+    let start_idx = conn.active_key_index % key_pool.len();
+    let mut last_error = String::new();
+
+    for attempt in 0..key_pool.len() {
+        let current_key_idx = (start_idx + attempt) % key_pool.len();
+        let current_key = &key_pool[current_key_idx];
+
+        match send_ai_chat_request(endpoint.clone(), current_key.clone(), payload.to_string()).await {
+            Ok(resp) => {
+                if current_key_idx != conn.active_key_index {
+                    conns[conn_idx].active_key_index = current_key_idx;
+                    let _ = save_connections(&conns);
+                }
+                return Ok(resp);
+            }
+            Err(err) => {
+                let is_failover_code = err.contains("429") || err.contains("503") || err.contains("402") || err.contains("Quota") || err.contains("Overloaded");
+                if is_failover_code && key_pool.len() > 1 && attempt + 1 < key_pool.len() {
+                    let next_idx = (current_key_idx + 1) % key_pool.len();
+                    let msg = format!("🔄 Switched to Backup Key #{} (due to {})", next_idx + 1, if err.contains("429") { "Rate Limit 429" } else { "Server Overloaded 503" });
+                    let _ = app.emit("key-rotation-event", serde_json::json!({
+                        "connection_id": conns[conn_idx].id,
+                        "key_index": next_idx + 1,
+                        "message": msg,
+                    }));
+                    last_error = err;
+                    continue;
+                } else {
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    Err(format!("All available API keys exhausted in auto-failover queue. Last error: {}", last_error))
 }
 
 #[tauri::command]
@@ -1641,6 +1807,350 @@ async fn send_ai_chat_request(
     Ok(text)
 }
 
+// =========================================================================
+// 3. ANDROID-TO-PC REMOTE DAEMON BRIDGE
+// =========================================================================
+
+struct DaemonState {
+    is_running: bool,
+    port: u16,
+    pin: String,
+    shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+static DAEMON_STATE: std::sync::LazyLock<Arc<TokioMutex<DaemonState>>> =
+    std::sync::LazyLock::new(|| {
+        Arc::new(TokioMutex::new(DaemonState {
+            is_running: false,
+            port: 8765,
+            pin: "8492".into(),
+            shutdown_tx: None,
+        }))
+    });
+
+fn get_local_ip() -> String {
+    if let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if socket.connect("8.8.8.8:80").is_ok() {
+            if let Ok(local_addr) = socket.local_addr() {
+                return local_addr.ip().to_string();
+            }
+        }
+    }
+    "127.0.0.1".to_string()
+}
+
+#[tauri::command]
+async fn get_daemon_status() -> Result<DaemonConfig, String> {
+    let state = DAEMON_STATE.lock().await;
+    let local_ip = get_local_ip();
+    let url = format!("http://{}:{}", local_ip, state.port);
+    Ok(DaemonConfig {
+        is_running: state.is_running,
+        port: state.port,
+        pin: state.pin.clone(),
+        local_ip,
+        connection_url: url,
+    })
+}
+
+#[tauri::command]
+async fn start_remote_daemon(port: Option<u16>, pin: Option<String>) -> Result<DaemonConfig, String> {
+    let mut state = DAEMON_STATE.lock().await;
+    if state.is_running {
+        let local_ip = get_local_ip();
+        return Ok(DaemonConfig {
+            is_running: true,
+            port: state.port,
+            pin: state.pin.clone(),
+            local_ip: local_ip.clone(),
+            connection_url: format!("http://{}:{}", local_ip, state.port),
+        });
+    }
+
+    let p = port.unwrap_or(8765);
+    let secret = pin.unwrap_or_else(|| "8492".into());
+
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    state.is_running = true;
+    state.port = p;
+    state.pin = secret.clone();
+    state.shutdown_tx = Some(shutdown_tx);
+
+    let bind_addr = format!("0.0.0.0:{}", p);
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
+        .await
+        .map_err(|e| format!("Failed to bind daemon on {}: {}", bind_addr, e))?;
+
+    let expected_pin = secret.clone();
+
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => {
+                    break;
+                }
+                res = listener.accept() => {
+                    if let Ok((mut stream, _addr)) = res {
+                        let pin_clone = expected_pin.clone();
+                        tokio::spawn(async move {
+                            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                            let mut buf = vec![0u8; 8192];
+                            if let Ok(n) = stream.read(&mut buf).await {
+                                if n == 0 { return; }
+                                let req = String::from_utf8_lossy(&buf[..n]);
+
+                                if req.starts_with("OPTIONS ") {
+                                    let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\n\r\n";
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                    return;
+                                }
+
+                                let has_auth = req.contains(&format!("x-daemon-pin: {}", pin_clone))
+                                    || req.contains(&format!("pin={}", pin_clone))
+                                    || req.contains(&format!("Bearer {}", pin_clone));
+
+                                let (status, body) = if req.contains("GET /api/status") || req.contains("GET /ping") {
+                                    (200, serde_json::json!({
+                                        "status": "online",
+                                        "locus_ready": true,
+                                        "device": "OpenCode PC Host Daemon",
+                                        "authorized": has_auth
+                                    }).to_string())
+                                } else if !has_auth {
+                                    (401, serde_json::json!({ "error": "Unauthorized: Invalid PIN" }).to_string())
+                                } else if req.contains("POST /api/exec") {
+                                    let body_str = req.split("\r\n\r\n").nth(1).unwrap_or("{}");
+                                    let parsed: serde_json::Value = serde_json::from_str(body_str).unwrap_or(serde_json::json!({}));
+                                    let cmd = parsed.get("command").and_then(|c| c.as_str()).unwrap_or("");
+                                    let args = parsed.get("args").cloned().unwrap_or(serde_json::json!({}));
+
+                                    let resp_json = match cmd {
+                                        "locus_check" => {
+                                            let target = args.get("target").and_then(|t| t.as_str()).unwrap_or("packages/core/src/tool.ts");
+                                            let bin = resolve_locus_path();
+                                            let out = Command::new(&bin).arg("check").arg(target).output();
+                                            let res_str = out.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_else(|e| e.to_string());
+                                            serde_json::json!({ "success": true, "output": res_str })
+                                        }
+                                        "locus_skeleton" => {
+                                            let target = args.get("file_path").and_then(|t| t.as_str()).unwrap_or("src/main.rs");
+                                            let bin = resolve_locus_path();
+                                            let out = Command::new(&bin).arg("skeleton").arg(target).output();
+                                            let res_str = out.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_else(|e| e.to_string());
+                                            serde_json::json!({ "success": true, "output": res_str })
+                                        }
+                                        "locus_slice" => {
+                                            let symbol = args.get("symbol").and_then(|s| s.as_str()).unwrap_or("init_app");
+                                            let path = args.get("path").and_then(|p| p.as_str()).unwrap_or("src/main.rs");
+                                            let bin = resolve_locus_path();
+                                            let out = Command::new(&bin).arg("slice").arg(symbol).arg(path).output();
+                                            let res_str = out.map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_else(|e| e.to_string());
+                                            serde_json::json!({ "success": true, "output": res_str })
+                                        }
+                                        "get_project_memory" => {
+                                            let cwd = args.get("cwd").and_then(|c| c.as_str()).map(|s| s.to_string());
+                                            let mem = get_project_memory(cwd).unwrap_or_default();
+                                            serde_json::json!({ "success": true, "memory": mem })
+                                        }
+                                        "save_project_memory" => {
+                                            let content = args.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                                            let cwd = args.get("cwd").and_then(|c| c.as_str()).map(|s| s.to_string());
+                                            let res = save_project_memory(content.to_string(), cwd);
+                                            serde_json::json!({ "success": res.is_ok() })
+                                        }
+                                        "apply_diff_action" => {
+                                            let path = args.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                                            let code = args.get("code").and_then(|c| c.as_str()).unwrap_or("");
+                                            let accept = args.get("accept").and_then(|a| a.as_bool()).unwrap_or(false);
+                                            let res = apply_diff_action(path.to_string(), code.to_string(), accept);
+                                            match res {
+                                                Ok(v) => v,
+                                                Err(e) => serde_json::json!({ "success": false, "error": e })
+                                            }
+                                        }
+                                        "revert_file_snapshot" => {
+                                            let snap_id = args.get("snapshot_id").and_then(|s| s.as_str()).unwrap_or("");
+                                            let res = revert_file_snapshot(snap_id.to_string());
+                                            match res {
+                                                Ok(msg) => serde_json::json!({ "success": true, "message": msg }),
+                                                Err(e) => serde_json::json!({ "success": false, "error": e })
+                                            }
+                                        }
+                                        _ => serde_json::json!({ "success": false, "error": format!("Unknown command '{}'", cmd) })
+                                    };
+                                    (200, resp_json.to_string())
+                                } else {
+                                    (404, serde_json::json!({ "error": "Not Found" }).to_string())
+                                };
+
+                                let http_res = format!(
+                                    "HTTP/1.1 {} OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
+                                    status,
+                                    body.len(),
+                                    body
+                                );
+                                let _ = stream.write_all(http_res.as_bytes()).await;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+    });
+
+    let local_ip = get_local_ip();
+    Ok(DaemonConfig {
+        is_running: true,
+        port: p,
+        pin: secret,
+        local_ip: local_ip.clone(),
+        connection_url: format!("http://{}:{}", local_ip, p),
+    })
+}
+
+#[tauri::command]
+async fn stop_remote_daemon() -> Result<(), String> {
+    let mut state = DAEMON_STATE.lock().await;
+    if let Some(tx) = state.shutdown_tx.take() {
+        let _ = tx.send(());
+    }
+    state.is_running = false;
+    Ok(())
+}
+
+// =========================================================================
+// 4. PERSISTENT PROJECT MEMORY (.locus/memory.md)
+// =========================================================================
+
+fn get_project_memory_path(cwd: Option<&str>) -> PathBuf {
+    let base = match cwd {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| get_opencode_home()),
+    };
+    base.join(".locus").join("memory.md")
+}
+
+#[tauri::command]
+fn get_project_memory(cwd: Option<String>) -> Result<String, String> {
+    let path = get_project_memory_path(cwd.as_deref());
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read memory.md: {}", e))
+    } else {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let default_memory = r#"# 🧠 الذاكرة المعمارية الدائمة للمشروع (.locus/memory.md)
+<!-- يتم حقن هذا السياق تلقائياً في بداية توجيه النظام (System Prompt) لكل جلسة عمل -->
+
+## 1. الهيكل والتقنيات (Architecture & Stack)
+- النظام: مبني على Tauri v2 + Webview UI + نواة Rust.
+- النمط البصري: Claude Code / OpenAI Codex Minimal Stream (#0D0D0D).
+- محرك المزودات: Universal OpenAI Router + محرك LOCUS AST لتخفيض التوكنز.
+
+## 2. القواعد والتفضيلات (Invariants & Rules)
+- الحفاظ التام على التعليقات والتوثيق الموجود في الملفات.
+- تدفق خطي متمركز بدون نوافذ جانبية مشوشة (Single Centered Linear Stream).
+- أخذ لقطة فورية (File Snapshot) قبل تطبيق أي تعديل مع خيار التراجع الكامل.
+- إخضاع أوامر النظام الحساسة أو الحاذفة لبوابة التصريح الأمني (Safety Gate).
+"#.to_string();
+        let _ = fs::write(&path, &default_memory);
+        Ok(default_memory)
+    }
+}
+
+#[tauri::command]
+fn save_project_memory(content: String, cwd: Option<String>) -> Result<(), String> {
+    let path = get_project_memory_path(cwd.as_deref());
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, content).map_err(|e| format!("Failed to save memory.md: {}", e))
+}
+
+#[tauri::command]
+fn update_project_memory(new_rule: String, cwd: Option<String>) -> Result<String, String> {
+    let mut current = get_project_memory(cwd.clone()).unwrap_or_default();
+    current.push_str(&format!("\n- {}", new_rule.trim()));
+    save_project_memory(current, cwd)?;
+    Ok("✓ تم تحديث ذاكرة المشروع في .locus/memory.md بنجاح".into())
+}
+
+// =========================================================================
+// 5. SYSTEM AUTOMATION SAFETY GATE
+// =========================================================================
+
+fn classify_command_safety(command: &str) -> (SafetyLevel, String) {
+    let cmd = command.trim().to_lowercase();
+
+    // 1. Safe Green operations (Read-only, AST inspection, status queries)
+    if cmd.starts_with("/check") || cmd.starts_with("/skeleton") || cmd.starts_with("/slice") || cmd.starts_with("/graph")
+        || cmd.starts_with("git status") || cmd.starts_with("git diff") || cmd.starts_with("git log")
+        || cmd.starts_with("cat ") || cmd.starts_with("dir") || cmd.starts_with("ls") || cmd.starts_with("pwd")
+        || cmd.starts_with("echo ")
+    {
+        return (SafetyLevel::SafeGreen, "عملية فحص وقراءة آمنة عبر LOCUS أو فحص الملفات".into());
+    }
+
+    // 2. Destructive Red operations (Deletion, Process termination, System modifications)
+    let destructive_patterns = [
+        ("rm ", "حذف ملفات أو مجلدات نهائياً (rm)"),
+        ("del ", "حذف ملفات من القرص (del)"),
+        ("rmdir", "إزالة مجلدات نهائياً (rmdir)"),
+        ("erase", "مسح ملفات من القرص (erase)"),
+        ("format ", "تهيئة قرص تخزين (format)"),
+        ("kill", "إنهاء عملية جارية بالقوة (kill)"),
+        ("taskkill", "إنهاء مهمة ويندوز بالقوة (taskkill)"),
+        ("stop-process", "إيقاف عملية في PowerShell"),
+        ("chmod 777", "تعديل صلاحيات الملفات بشكل غير آمن"),
+        ("reg add", "تعديل سجل نظام ويندوز (Registry)"),
+        ("reg delete", "حذف مفاتيح من سجل النظام (Registry)"),
+        ("drop database", "حذف قاعدة بيانات كاملة"),
+        ("drop table", "حذف جدول بيانات"),
+        ("truncate ", "إفراغ بيانات الجداول"),
+        ("curl -x post", "إرسال بيانات للشبكة الخارجية"),
+        ("invoke-webrequest -method post", "إرسال بيانات خارج الجهاز"),
+    ];
+
+    for (pat, reason) in destructive_patterns {
+        if cmd.contains(pat) {
+            return (SafetyLevel::DestructiveRed, reason.to_string());
+        }
+    }
+
+    (SafetyLevel::SafeGreen, "أمر طرفية قياسي ضمن بيئة العمل".into())
+}
+
+static SAFETY_WAITERS: std::sync::LazyLock<Arc<TokioMutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>>> =
+    std::sync::LazyLock::new(|| Arc::new(TokioMutex::new(HashMap::new())));
+
+#[tauri::command]
+async fn check_safety_gate(command: String) -> Result<SafetyCheckResult, String> {
+    let (level, reason) = classify_command_safety(&command);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let request_id = format!("gate_{}", now);
+
+    Ok(SafetyCheckResult {
+        level,
+        command,
+        reason,
+        request_id,
+    })
+}
+
+#[tauri::command]
+async fn authorize_safety_command(request_id: String, approved: bool) -> Result<(), String> {
+    let mut waiters = SAFETY_WAITERS.lock().await;
+    if let Some(tx) = waiters.remove(&request_id) {
+        let _ = tx.send(approved);
+        Ok(())
+    } else {
+        Err(format!("Safety request '{}' not found or already processed", request_id))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1677,6 +2187,16 @@ pub fn run() {
             get_pinned_models,
             save_pinned_models,
             apply_diff_action,
+            create_file_snapshot,
+            revert_file_snapshot,
+            start_remote_daemon,
+            stop_remote_daemon,
+            get_daemon_status,
+            get_project_memory,
+            save_project_memory,
+            update_project_memory,
+            check_safety_gate,
+            authorize_safety_command,
             execute_session_turn,
             open_external_url,
             send_ai_chat_request

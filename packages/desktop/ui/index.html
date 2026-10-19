@@ -61,6 +61,18 @@
           <span class="engine-title">⚡ LOCUS: -86% Tokens</span>
         </div>
 
+        <!-- Project Memory Quick Button -->
+        <button type="button" class="btn-top-bar-icon" id="openMemoryBtn" title="الذاكرة المعمارية للمشروع (.locus/memory.md)">
+          <span class="top-icon">🧠</span>
+          <span class="btn-label desktop-only">Memory</span>
+        </button>
+
+        <!-- Remote Daemon Status Chip -->
+        <div class="daemon-status-chip hidden" id="daemonStatusChip" title="حالة جسر التحكم عن بُعد">
+          <span class="daemon-dot"></span>
+          <span class="daemon-label" id="daemonStatusLabel">Daemon: 8765</span>
+        </div>
+
         <!-- Command Center / Settings Drawer Toggle -->
         <button type="button" class="command-center-btn" id="openDrawerBtn" title="مركز القيادة والإعدادات (Ctrl+,)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -176,6 +188,14 @@
             <span class="tab-icon">🧠</span>
             <span>المهارات والأتمتة</span>
           </button>
+          <button type="button" class="tab-btn" data-tab="tab-remote" role="tab" id="tabRemoteBtn">
+            <span class="tab-icon">📱⇄💻</span>
+            <span>جسر الهاتف والحاسوب</span>
+          </button>
+          <button type="button" class="tab-btn" data-tab="tab-memory" role="tab" id="tabMemoryBtn">
+            <span class="tab-icon">🧠</span>
+            <span>ذاكرة المشروع (.locus)</span>
+          </button>
         </div>
 
         <!-- Tab 1: Universal API Vault (المحرك العالمي للمفاتيح والنماذج) -->
@@ -240,6 +260,96 @@
             <!-- Rendered dynamically -->
           </div>
         </div>
+
+        <!-- Tab 4: Android-to-PC Remote Daemon Bridge -->
+        <div class="tab-content-panel" id="tab-remote" role="tabpanel">
+          <div class="tab-toolbar">
+            <p>ربط هاتف الأندرويد كجهاز تحكم عن بُعد بالحاسوب مع الاستفادة من محرك LOCUS على القرص D:\.</p>
+            <div class="toolbar-actions">
+              <span class="bridge-mode-badge" id="currentBridgeModeBadge">الوضع: محلي (Standalone)</span>
+            </div>
+          </div>
+
+          <div class="remote-bridge-container">
+            <!-- Host Mode (PC) -->
+            <div class="bridge-card" id="hostDaemonCard">
+              <div class="bridge-card-header">
+                <div class="card-title-group">
+                  <span class="card-icon">💻</span>
+                  <h4>خادم التحكم للحاسوب (PC Host Daemon)</h4>
+                </div>
+                <span class="status-indicator-dot stopped" id="hostDaemonDot"></span>
+              </div>
+              <p class="bridge-desc">تشغيل خادم محلي مشفر برمز سري على الشبكة يتيح للهاتف التحكم الكامل والوصول لـ LOCUS.</p>
+              <div class="bridge-input-row">
+                <div class="input-col">
+                  <label>منفذ الاتصال (Port):</label>
+                  <input type="number" id="daemonPortInput" value="8765" dir="ltr">
+                </div>
+                <div class="input-col">
+                  <label>الرمز السري (PIN / Token):</label>
+                  <input type="text" id="daemonPinInput" value="8492" dir="ltr">
+                </div>
+              </div>
+              <div class="bridge-url-display hidden" id="daemonUrlDisplay">
+                <label>رابط الاتصال المباشر على الشبكة المحلية:</label>
+                <div class="copy-url-group">
+                  <input type="text" id="daemonUrlInput" readonly dir="ltr">
+                  <button type="button" class="btn-small" id="copyDaemonUrlBtn">نسخ الرابط</button>
+                </div>
+              </div>
+              <div class="bridge-actions-row">
+                <button type="button" class="btn-action" id="startDaemonBtn">تشغيل الخادم ⚡</button>
+                <button type="button" class="btn-danger-action hidden" id="stopDaemonBtn">إيقاف الخادم ⏹️</button>
+              </div>
+            </div>
+
+            <!-- Client Mode (Android / Remote Controller) -->
+            <div class="bridge-card" id="clientRemoteCard">
+              <div class="bridge-card-header">
+                <div class="card-title-group">
+                  <span class="card-icon">📱</span>
+                  <h4>الاتصال بجهاز الحاسوب (Remote Controller)</h4>
+                </div>
+                <span class="status-indicator-dot stopped" id="clientConnDot"></span>
+              </div>
+              <p class="bridge-desc">اجعل واجهة الهاتف ترسل الأوامر، تفحص ملفات D:\ عبر LOCUS، وتعتمد التعديلات لحظياً.</p>
+              <div class="bridge-input-row">
+                <div class="input-col full-width">
+                  <label>عنوان خادم الحاسوب (Host URL):</label>
+                  <input type="text" id="remoteHostInput" placeholder="http://192.168.1.50:8765" dir="ltr">
+                </div>
+              </div>
+              <div class="bridge-input-row">
+                <div class="input-col full-width">
+                  <label>الرمز السري (PIN):</label>
+                  <input type="password" id="remotePinInput" placeholder="8492" dir="ltr">
+                </div>
+              </div>
+              <div class="bridge-actions-row">
+                <button type="button" class="btn-action" id="connectRemoteBtn">اتصال بالحاسوب 🔗</button>
+                <button type="button" class="btn-secondary-action hidden" id="disconnectRemoteBtn">فصل الاتصال</button>
+              </div>
+              <div class="bridge-status-feedback" id="remoteConnFeedback"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 5: Persistent Project Memory (.locus/memory.md) -->
+        <div class="tab-content-panel" id="tab-memory" role="tabpanel">
+          <div class="tab-toolbar">
+            <p>الذاكرة المعمارية الدائمة للمشروع: تُحقن تلقائياً وبشكل مضغوط في سياق النظام (System Prompt) لكل جلسة.</p>
+            <div class="toolbar-actions">
+              <button type="button" class="btn-action" id="saveMemoryBtn">حفظ التغييرات 💾</button>
+              <button type="button" class="btn-secondary-action" id="reloadMemoryBtn">إعادة تحميل 🔄</button>
+            </div>
+          </div>
+          <div class="memory-editor-container">
+            <div class="memory-path-badge">📁 مسار الملف: <code id="memoryPathCode">.locus/memory.md</code></div>
+            <textarea id="projectMemoryTextarea" class="code-textarea memory-textarea" dir="ltr" rows="15" placeholder="# الذاكرة المعمارية للمشروع..."></textarea>
+            <div class="memory-status-msg" id="memoryStatusMsg"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -282,11 +392,18 @@
 
           <!-- API Key -->
           <div class="field-row">
-            <label>مفتاح الـ API (API Key):</label>
+            <label>مفتاح الـ API الأساسي (Primary API Key):</label>
             <div class="key-input-wrapper">
-              <input type="password" id="connKeyInput" placeholder="الصق المفتاح هنا..." dir="ltr" autocomplete="off">
+              <input type="password" id="connKeyInput" placeholder="الصق المفتاح الأساسي هنا..." dir="ltr" autocomplete="off">
               <button type="button" class="btn-toggle-key" id="toggleKeyVisibility" title="إظهار / إخفاء المفتاح">👁️</button>
             </div>
+          </div>
+
+          <!-- Auto-Failover Backup Keys -->
+          <div class="field-row">
+            <label>مفاتيح احتياطية للتبديل التلقائي (Auto-Failover Queue):</label>
+            <textarea id="connBackupKeysInput" placeholder="مفتاح احتياطي إضافي في كل سطر للتبديل التلقائي عند 429 أو 503..." dir="ltr" rows="2" class="code-textarea"></textarea>
+            <div class="field-hint">إذا واجه الأجينت خطأ 429 Rate Limit أو ضغط الخادم (503)، سينتقل فوراً للمفتاح التالي دون انقطاع الجلسة.</div>
           </div>
 
           <!-- Model Discovery & Pinning -->
