@@ -814,6 +814,44 @@ fn open_external_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn send_ai_chat_request(
+    endpoint: String,
+    api_key: String,
+    payload_json: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|e| format!("Client initialization error: {}", e))?;
+
+    let mut req = client
+        .post(&endpoint)
+        .header("Content-Type", "application/json");
+
+    if !api_key.trim().is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key.trim()));
+    }
+
+    let res = req
+        .body(payload_json)
+        .send()
+        .await
+        .map_err(|e| format!("Native request failed: {}", e))?;
+
+    let status = res.status();
+    let text = res
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Server returned HTTP {}: {}", status, text));
+    }
+
+    Ok(text)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -831,7 +869,8 @@ pub fn run() {
             list_saved_providers,
             list_available_models,
             execute_session_turn,
-            open_external_url
+            open_external_url,
+            send_ai_chat_request
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenCode Tauri desktop application");

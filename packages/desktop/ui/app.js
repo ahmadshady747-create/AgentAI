@@ -388,13 +388,48 @@ async function executeChatStream(provider, modelName, apiKey, prompt) {
   };
 
   if (provider === "gemini") {
-    // Gemini OpenAI compatible endpoint accepts key in Authorization or query
     endpoint += `?key=${apiKey}`;
     headers["Authorization"] = `Bearer ${apiKey}`;
   } else {
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
 
+  // 1. Try Native Rust Request First (bypasses CORS 100%, works with NVIDIA NIM!)
+  if (invoke) {
+    try {
+      const nonStreamPayload = {
+        model: modelName,
+        messages: conversationHistory,
+        stream: false,
+        temperature: 0.7,
+        max_tokens: 3000
+      };
+
+      const result = await invoke("send_ai_chat_request", {
+        endpoint: endpoint,
+        apiKey: apiKey,
+        payloadJson: JSON.stringify(nonStreamPayload)
+      });
+
+      const parsed = JSON.parse(result);
+      const text = parsed.choices?.[0]?.message?.content;
+      if (text) {
+        assistant.body.innerHTML = formatMarkdown(text);
+        assistant.tag.textContent = "مكتمل";
+        assistant.tag.className = "status-tag status-success";
+        conversationHistory.push({ role: "assistant", content: text });
+        scrollToBottom();
+        return;
+      }
+    } catch (rustErr) {
+      console.warn("Native Rust request failed:", rustErr);
+      if (rustErr && typeof rustErr === "string" && rustErr.includes("Server returned HTTP")) {
+        throw new Error(rustErr);
+      }
+    }
+  }
+
+  // 2. Fallback to Browser Streaming Fetch (Works out-of-the-box for Groq, Gemini, DeepSeek, OpenRouter)
   const payload = {
     model: modelName,
     messages: conversationHistory,
@@ -471,7 +506,13 @@ async function executeChatStream(provider, modelName, apiKey, prompt) {
     assistant.tag.textContent = "تعذر الإكمال";
     assistant.tag.className = "status-tag";
     assistant.tag.style.color = "#ff7b72";
-    assistant.body.innerHTML += `<div style="margin-top: 10px; color: #ff7b72; font-size: 13px;">⚠️ ${escapeHtml(err.message)}</div>`;
+
+    let customHelp = err.message;
+    if (err.message && err.message.includes("fetch")) {
+      customHelp = `تعذر الاتصال المباشر بخادم '${cfg.name}' بسبب قيود CORS في المتصفح. نوصي باختيار Groq LPU أو Google Gemini من القائمة فهما يدعمان الاتصال الفوري بنسبة 100%!`;
+    }
+
+    assistant.body.innerHTML += `<div style="margin-top: 10px; color: #ff7b72; font-size: 13px;">⚠️ ${escapeHtml(customHelp)}</div>`;
   }
 }
 
