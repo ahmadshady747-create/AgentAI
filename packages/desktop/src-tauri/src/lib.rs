@@ -68,6 +68,16 @@ pub struct ApiConnection {
     pub all_models: Vec<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ValidationResult {
+    pub success: bool,
+    pub status_code: u16,
+    pub latency_ms: u64,
+    pub status_type: String,
+    pub message: String,
+    pub models: Vec<String>,
+}
+
 fn get_opencode_home() -> PathBuf {
     #[cfg(target_os = "android")]
     {
@@ -1313,6 +1323,227 @@ async fn fetch_connection_models(base_url: String, api_key: String) -> Result<Ve
 }
 
 #[tauri::command]
+async fn validate_and_fetch_models(
+    base_url: String,
+    api_key: String,
+    test_model: Option<String>,
+) -> Result<ValidationResult, String> {
+    let clean_key = api_key.trim();
+    let clean_base = base_url.trim().trim_end_matches('/');
+    if clean_base.is_empty() {
+        return Ok(ValidationResult {
+            success: false,
+            status_code: 400,
+            latency_ms: 0,
+            status_type: "invalid_url".into(),
+            message: "رابط نقطة النهاية (Base URL) لا يمكن أن يكون فارغاً.".into(),
+            models: Vec::new(),
+        });
+    }
+
+    let models_url = if clean_base.ends_with("/chat/completions") {
+        format!("{}/models", clean_base.trim_end_matches("/chat/completions"))
+    } else if clean_base.ends_with("/models") {
+        clean_base.to_string()
+    } else {
+        format!("{}/models", clean_base)
+    };
+
+    // Strict 5 seconds timeout as requested
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(ValidationResult {
+                success: false,
+                status_code: 500,
+                latency_ms: 0,
+                status_type: "network_error".into(),
+                message: format!("فشل في تهيئة عميل الاتصال: {}", e),
+                models: Vec::new(),
+            });
+        }
+    };
+
+    let start = std::time::Instant::now();
+    let mut req = client.get(&models_url)
+        .header("User-Agent", "OpenCode-Desktop/2.0.32")
+        .header("HTTP-Referer", "https://opencode.ai")
+        .header("X-Title", "OpenCode Sovereign");
+
+    if !clean_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", clean_key));
+    }
+
+    let res = req.send().await;
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    match res {
+        Ok(response) => {
+            let status = response.status();
+            let code = status.as_u16();
+
+            // 1. 200 OK: Valid key, latency, extract models
+            if code == 200 {
+                let text = response.text().await.unwrap_or_default();
+                let mut models = Vec::new();
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
+                        for item in data {
+                            if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
+                                models.push(id.to_string());
+                            }
+                        }
+                    } else if let Some(items) = parsed.get("models").and_then(|m| m.as_array()) {
+                        for item in items {
+                            if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+                                let id = name.trim_start_matches("models/").to_string();
+                                models.push(id);
+                            } else if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
+                                models.push(id.to_string());
+                            }
+                        }
+                    }
+                }
+                models.sort();
+                models.dedup();
+
+                return Ok(ValidationResult {
+                    success: true,
+                    status_code: 200,
+                    latency_ms,
+                    status_type: "valid".into(),
+                    message: format!("المفتاح صالح ومفعّل (زمن الاستجابة: {}ms) - تم جلب {} نموذج بنجاح.", latency_ms, models.len()),
+                    models,
+                });
+            }
+
+            // 2. 401 / 403: Invalid or expired key
+            if code == 401 || code == 403 {
+                return Ok(ValidationResult {
+                    success: false,
+                    status_code: code,
+                    latency_ms,
+                    status_type: "invalid_key".into(),
+                    message: format!("المفتاح غير صالح أو منتهي الصلاحية (HTTP {}) - يرجى مراجعة المفتاح من لوحة التحكم.", code),
+                    models: Vec::new(),
+                });
+            }
+
+            // 3. 429 / 402: Quota exceeded / rate limited
+            if code == 429 || code == 402 {
+                return Ok(ValidationResult {
+                    success: false,
+                    status_code: code,
+                    latency_ms,
+                    status_type: "quota_exceeded".into(),
+                    message: format!("المفتاح صالح، لكن الرصيد نافد أو تم تجاوز الحد المسموح (HTTP {} Quota Exceeded).", code),
+                    models: Vec::new(),
+                });
+            }
+
+            // 4. 404 Not Found: Fallback via /chat/completions (max_tokens: 1)
+            if code == 404 {
+                let chat_url = if clean_base.ends_with("/chat/completions") {
+                    clean_base.to_string()
+                } else {
+                    format!("{}/chat/completions", clean_base)
+                };
+
+                let target_model = test_model.unwrap_or_else(|| "llama-3.3-70b-versatile".to_string());
+                let fallback_start = std::time::Instant::now();
+                let fallback_payload = serde_json::json!({
+                    "model": target_model,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1
+                });
+
+                let mut fb_req = client.post(&chat_url)
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", "OpenCode-Desktop/2.0.32");
+
+                if !clean_key.is_empty() {
+                    fb_req = fb_req.header("Authorization", format!("Bearer {}", clean_key));
+                }
+
+                if let Ok(fb_res) = fb_req.body(fallback_payload.to_string()).send().await {
+                    let fb_latency = fallback_start.elapsed().as_millis() as u64;
+                    let fb_status = fb_res.status().as_u16();
+
+                    if fb_status == 200 {
+                        return Ok(ValidationResult {
+                            success: true,
+                            status_code: 200,
+                            latency_ms: fb_latency,
+                            status_type: "fallback_valid".into(),
+                            message: format!("المفتاح صالح ومفعّل بنجاح عبر Fallback (/chat/completions) - زمن الاستجابة: {}ms.", fb_latency),
+                            models: vec![target_model],
+                        });
+                    } else if fb_status == 401 || fb_status == 403 {
+                        return Ok(ValidationResult {
+                            success: false,
+                            status_code: fb_status,
+                            latency_ms: fb_latency,
+                            status_type: "invalid_key".into(),
+                            message: format!("المفتاح غير صالح أو منتهي الصلاحية (Fallback HTTP {}).", fb_status),
+                            models: Vec::new(),
+                        });
+                    } else if fb_status == 429 || fb_status == 402 {
+                        return Ok(ValidationResult {
+                            success: false,
+                            status_code: fb_status,
+                            latency_ms: fb_latency,
+                            status_type: "quota_exceeded".into(),
+                            message: format!("المفتاح صالح لكن تم تجاوز الرصيد أو الحد المسموح (Fallback HTTP {}).", fb_status),
+                            models: Vec::new(),
+                        });
+                    }
+                }
+
+                return Ok(ValidationResult {
+                    success: false,
+                    status_code: 404,
+                    latency_ms,
+                    status_type: "not_found".into(),
+                    message: "نقطة /models ونقطة /chat/completions غير متوفرتين على هذا الرابط (404 Not Found).".into(),
+                    models: Vec::new(),
+                });
+            }
+
+            // Other unexpected status code
+            let err_text = response.text().await.unwrap_or_default();
+            Ok(ValidationResult {
+                success: false,
+                status_code: code,
+                latency_ms,
+                status_type: "unexpected_status".into(),
+                message: format!("استجاب الخادم برمز غير متوقع (HTTP {}): {}", code, err_text),
+                models: Vec::new(),
+            })
+        }
+        Err(e) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            let is_timeout = e.is_timeout();
+            let msg = if is_timeout {
+                format!("انتهت المهلة الزمنية (تجاوز 5 ثوانٍ) - تعذر الاتصال بـ {}", models_url)
+            } else {
+                format!("فشل الاتصال بالشبكة: {}", e)
+            };
+            Ok(ValidationResult {
+                success: false,
+                status_code: 0,
+                latency_ms,
+                status_type: "network_error".into(),
+                message: msg,
+                models: Vec::new(),
+            })
+        }
+    }
+}
+
+#[tauri::command]
 async fn send_universal_chat_request(
     connection_id: String,
     model: String,
@@ -1433,6 +1664,7 @@ pub fn run() {
             toggle_api_connection,
             toggle_pinned_model,
             fetch_connection_models,
+            validate_and_fetch_models,
             send_universal_chat_request,
             get_mcp_config,
             save_mcp_config,

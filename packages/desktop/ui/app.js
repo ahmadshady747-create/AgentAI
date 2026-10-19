@@ -495,49 +495,154 @@ function renderDiscoveredChecklist(models, pinned = []) {
   });
 }
 
-// Fetch models via native backend
+// Smart Key Validator & Model Fetching via Native Rust Backend (5s Timeout + Latency ms + 4 States)
 async function handleFetchModels() {
   const baseUrl = connBaseUrlInput.value.trim();
   const apiKey = connKeyInput.value.trim();
 
   if (!baseUrl) {
-    discoveryStatus.textContent = "الرجاء إدخال رابط Base URL أولاً";
-    discoveryStatus.style.color = "var(--accent-red)";
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-error">
+        <span class="val-badge badge-red">✕ خطأ في الرابط</span>
+        <span class="val-msg">الرجاء إدخال رابط نقطة النهاية (Base URL) أولاً قبل بدء الفحص.</span>
+      </div>
+    `;
     return;
   }
 
+  // Get test model candidate for fallback verification
+  const manualModel = manualModelInput ? manualModelInput.value.trim() : "";
+  const firstChecked = discoveredModelsList.querySelector("input:checked")?.value;
+  const testCandidate = manualModel || firstChecked || null;
+
   fetchModelsBtn.disabled = true;
-  fetchModelsBtn.textContent = "جاري الجلب...";
-  discoveryStatus.textContent = "يتم الاتصال بـ /models...";
-  discoveryStatus.style.color = "var(--accent-blue)";
+  fetchModelsBtn.innerHTML = `<span>⏳</span> جاري الفحص (5s)...`;
+  discoveryStatus.innerHTML = `
+    <div class="val-result" style="background: rgba(255,255,255,0.03); border: 1px dashed var(--border-color); color: var(--text-secondary);">
+      <span class="val-badge badge-blue">⏳ جاري الاتصال وقياس زمن الاستجابة...</span>
+      <span class="val-msg">إرسال طلب GET ${escapeHtml(baseUrl)}/models بمهلة قصوى 5 ثوانٍ...</span>
+    </div>
+  `;
 
   try {
-    let models = [];
+    let result = null;
     if (invoke) {
-      models = await invoke("fetch_connection_models", { baseUrl, apiKey });
+      result = await invoke("validate_and_fetch_models", {
+        baseUrl,
+        apiKey,
+        testModel: testCandidate
+      });
     } else {
-      models = ["model-mock-1", "model-mock-2", "model-mock-3"];
+      // Mock simulation for browser preview
+      await new Promise(r => setTimeout(r, 380));
+      result = {
+        success: true,
+        status_code: 200,
+        latency_ms: 118,
+        status_type: "valid",
+        message: "المفتاح صالح ومفعّل (زمن الاستجابة: 118ms) - تم جلب 3 نماذج بنجاح.",
+        models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+      };
     }
 
-    if (models.length === 0) {
-      discoveryStatus.textContent = "تم الاتصال ولكن لم يتم العثور على نماذج.";
-      discoveryStatus.style.color = "var(--accent-amber)";
-    } else {
-      discoveryStatus.textContent = `✓ تم اكتشاف ${models.length} نموذج بنجاح!`;
-      discoveryStatus.style.color = "var(--accent-green)";
-
-      // Select previously checked or first 2
-      const existingChecked = Array.from(discoveredModelsList.querySelectorAll("input:checked")).map(i => i.value);
-      const defaultPins = existingChecked.length > 0 ? existingChecked : models.slice(0, 2);
-      renderDiscoveredChecklist(models, defaultPins);
-    }
+    renderValidationFeedback(result);
   } catch (err) {
-    discoveryStatus.textContent = `✕ تعذر الجلب التلقائي: ${err}`;
-    discoveryStatus.style.color = "var(--accent-red)";
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-error">
+        <span class="val-badge badge-red">✕ استثناء في النظام</span>
+        <span class="val-msg">${escapeHtml(String(err))}</span>
+      </div>
+    `;
   } finally {
     fetchModelsBtn.disabled = false;
-    fetchModelsBtn.textContent = "Fetch Models 🔄";
+    fetchModelsBtn.textContent = "Verify & Fetch ⚡";
   }
+}
+
+// Render Smart Key Validator 4-state feedback & populate models
+function renderValidationFeedback(res) {
+  if (!res) return;
+
+  const latencyStr = res.latency_ms ? `${res.latency_ms}ms` : "<1ms";
+
+  // الحالة 1: 200 OK - المفتاح صالح + عرض سرعة الاستجابة بالملي ثانية + عرض قائمة النماذج
+  if (res.status_code === 200 && res.status_type === "valid") {
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-success">
+        <span class="val-badge badge-green">🟢 200 OK • ${latencyStr}</span>
+        <span class="val-msg">المفتاح صالح ومفعّل بنجاح (زمن الاستجابة: ${latencyStr}). تم جلب ${res.models?.length || 0} نموذج متوفر.</span>
+      </div>
+    `;
+
+    if (res.models && res.models.length > 0) {
+      const existingChecked = Array.from(discoveredModelsList.querySelectorAll("input:checked")).map(i => i.value);
+      const defaultPins = existingChecked.length > 0 ? existingChecked : res.models.slice(0, 2);
+      renderDiscoveredChecklist(res.models, defaultPins);
+    } else {
+      discoveryStatus.innerHTML += `
+        <div class="val-msg" style="color: var(--accent-amber); margin-top: 4px;">
+          المفتاح صالح لكن نقطة النهاية لم ترجع قائمة نماذج. يمكنك كتابة Model ID يدوياً أدناه.
+        </div>
+      `;
+    }
+    return;
+  }
+
+  // الحالة 2: 401 / 403 - المفتاح غير صالح أو منتهي الصلاحية
+  if (res.status_code === 401 || res.status_code === 403 || res.status_type === "invalid_key") {
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-error">
+        <span class="val-badge badge-red">🔴 خطأ ${res.status_code || 401} Unauthorized</span>
+        <span class="val-msg">${escapeHtml(res.message || "المفتاح غير صالح أو منتهي الصلاحية - يرجى مراجعة المفتاح من لوحة التحكم.")}</span>
+      </div>
+    `;
+    return;
+  }
+
+  // الحالة 3: 429 / 402 - المفتاح صالح ولكن الرصيد نافد أو تم تجاوز الحد المسموح (Quota Exceeded)
+  if (res.status_code === 429 || res.status_code === 402 || res.status_type === "quota_exceeded") {
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-warning">
+        <span class="val-badge badge-amber">🟡 تنبيه ${res.status_code || 429} Quota Exceeded • ${latencyStr}</span>
+        <span class="val-msg">${escapeHtml(res.message || "المفتاح صالح، لكن الرصيد نافد أو تم تجاوز الحد المسموح للاستخدام.")}</span>
+      </div>
+    `;
+    return;
+  }
+
+  // الحالة 4: 404 Fallback - تم التحقق عبر نقطة /chat/completions بـ max_tokens: 1
+  if (res.status_type === "fallback_valid") {
+    discoveryStatus.innerHTML = `
+      <div class="val-result val-fallback">
+        <span class="val-badge badge-blue">🔵 مفعّل عبر Fallback (/chat/completions) • ${latencyStr}</span>
+        <span class="val-msg">${escapeHtml(res.message || "نقطة /models غير مدعومة (404)، لكن تم التحقق من صلاحية المفتاح والنموذج بنجاح عبر اختبار نقطة المحادثة.")}</span>
+      </div>
+    `;
+
+    if (res.models && res.models.length > 0) {
+      const existing = Array.from(discoveredModelsList.querySelectorAll("input")).map(i => i.value);
+      res.models.forEach(m => {
+        if (!existing.includes(m)) {
+          const item = document.createElement("div");
+          item.className = "discovered-model-item";
+          item.innerHTML = `
+            <input type="checkbox" value="${escapeHtml(m)}" checked>
+            <span>${escapeHtml(m)}</span>
+          `;
+          discoveredModelsList.insertBefore(item, discoveredModelsList.firstChild);
+        }
+      });
+    }
+    return;
+  }
+
+  // أخطاء أخرى: انتهاء المهلة (Timeout 5s) أو خطأ في الشبكة أو 404 غير متوفر
+  discoveryStatus.innerHTML = `
+    <div class="val-result val-error">
+      <span class="val-badge badge-red">✕ ${res.status_code ? `HTTP ${res.status_code}` : 'فشل الفحص'} • ${latencyStr}</span>
+      <span class="val-msg">${escapeHtml(res.message || "تعذر إكمال الفحص.")}</span>
+    </div>
+  `;
 }
 
 // Add manual model

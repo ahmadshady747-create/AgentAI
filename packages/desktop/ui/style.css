@@ -1359,6 +1359,69 @@ html, body {
   cursor: pointer;
 }
 
+/* Smart Key Validator Badges & Feedback */
+.val-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.val-success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--accent-green);
+}
+
+.val-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #F87171;
+}
+
+.val-warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #FBBF24;
+}
+
+.val-fallback {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38BDF8;
+}
+
+.val-badge {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.badge-green { background: rgba(16, 185, 129, 0.2); color: #34D399; }
+.badge-red { background: rgba(239, 68, 68, 0.2); color: #F87171; }
+.badge-amber { background: rgba(245, 158, 11, 0.2); color: #FBBF24; }
+.badge-blue { background: rgba(56, 189, 248, 0.2); color: #38BDF8; }
+
+.val-msg {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+}
+
 /* =========================================
    MCP CARDS (TAB 2)
    ========================================= */
