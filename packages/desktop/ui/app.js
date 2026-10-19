@@ -79,6 +79,7 @@ let providerKeys = { groq: "", gemini: "", nvidia: "", openrouter: "" };
 let pinnedModels = [];
 let mcpServers = [];
 let skillsList = [];
+let currentStreamBuffer = "";
 
 // Conversation History
 const conversationHistory = [
@@ -783,9 +784,11 @@ function handleStreamEvent(event) {
   const textBlock = lastTurn.querySelector(".assistant-text");
 
   if (data.type === "Token") {
+    currentStreamBuffer += data.payload;
     if (textBlock) textBlock.innerHTML += escapeHtml(data.payload);
     scrollStreamToBottom();
   } else if (data.type === "ToolStart") {
+    currentStreamBuffer = "";
     appendToolPill(lastTurn, data.payload.name, data.payload.input);
     scrollStreamToBottom();
   } else if (data.type === "ToolEnd") {
@@ -807,6 +810,11 @@ function handleStreamEvent(event) {
     renderInteractiveDiffCard(lastTurn, hunk.path, lines);
     scrollStreamToBottom();
   } else if (data.type === "Finish") {
+    if (textBlock && currentStreamBuffer.trim()) {
+      textBlock.innerHTML = renderMarkdown(currentStreamBuffer);
+      conversationHistory.push({ role: "assistant", content: currentStreamBuffer });
+    }
+    currentStreamBuffer = "";
     isStreaming = false;
     sendBtn.disabled = false;
   }
@@ -1032,21 +1040,37 @@ function escapeHtml(str) {
 
 function renderMarkdown(md) {
   if (!md) return "";
-  let html = escapeHtml(md);
 
-  // Code blocks ```lang ... ```
-  html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    return `<pre><code class="language-${lang}">${code}</code></pre>`;
+  // Extract and stash code blocks to protect them from paragraph processing
+  const codeBlocks = [];
+  let processed = md.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (match, lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(`<pre><code class="language-${lang || 'text'}">${escapeHtml(code.trim())}</code></pre>`);
+    return `__CODE_BLOCK_${idx}__`;
   });
 
-  // Inline `code`
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Escape remaining markdown text
+  processed = escapeHtml(processed);
 
-  // Bold **text**
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Restore code block placeholders
+  codeBlocks.forEach((block, idx) => {
+    processed = processed.replace(`__CODE_BLOCK_${idx}__`, block);
+  });
+
+  // Inline code: `code`
+  processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Bold: **text**
+  processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // Italic: *text*
+  processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
   // Paragraphs
-  html = html.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  processed = processed.split(/\n\n+/).map(p => {
+    if (p.includes('<pre><code')) return p;
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
 
-  return html;
+  return processed;
 }
