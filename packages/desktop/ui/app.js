@@ -145,10 +145,24 @@ async function loadConnections() {
     }
   }
 
-  // Update Drawer status indicator
+  // Purge any dead or decommissioned models (e.g. qwen2.5-coder-32b, mixtral-8x7b)
+  apiConnections.forEach(c => {
+    c.pinned_models = (c.pinned_models || []).filter(m => m !== "qwen/qwen2.5-coder-32b-instruct" && m !== "mixtral-8x7b-32768" && !m.includes("qwen2.5-coder-32b"));
+    c.all_models = (c.all_models || []).filter(m => m !== "qwen/qwen2.5-coder-32b-instruct" && m !== "mixtral-8x7b-32768" && !m.includes("qwen2.5-coder-32b"));
+  });
+
+  if (activeModelId && (activeModelId.includes("qwen2.5-coder-32b") || activeModelId.includes("mixtral-8x7b"))) {
+    activeModelId = null;
+  }
+
+  // Update Drawer status indicators (both desktop & mobile)
   const hasActive = apiConnections.some(c => c.enabled && c.api_key.trim().length > 0);
   if (drawerKeyIndicator) {
     drawerKeyIndicator.style.backgroundColor = hasActive ? "var(--accent-green)" : "var(--accent-amber)";
+  }
+  const mobileDot = document.getElementById("mobileDrawerKeyIndicator");
+  if (mobileDot) {
+    mobileDot.style.backgroundColor = hasActive ? "var(--accent-green)" : "var(--accent-amber)";
   }
 
   // Set active model if not set
@@ -965,7 +979,59 @@ async function proceedWithSend(text, assistantTurn) {
       }
 
     } catch (err) {
-      assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">خطأ في الاتصال بنقطة النهاية: ${err}</span>`;
+      const errStr = String(err);
+      const isDeadModel = errStr.includes("410") || 
+                          errStr.toLowerCase().includes("gone") || 
+                          errStr.toLowerCase().includes("end of life") || 
+                          errStr.includes("404") || 
+                          errStr.toLowerCase().includes("not_found") || 
+                          errStr.toLowerCase().includes("not found");
+
+      if (isDeadModel) {
+        // Auto-purge decommissioned/invalid model from connection
+        if (currentConn && activeModelId) {
+          const deadModel = activeModelId;
+          currentConn.pinned_models = (currentConn.pinned_models || []).filter(m => m !== deadModel);
+          currentConn.all_models = (currentConn.all_models || []).filter(m => m !== deadModel);
+          if (invoke) {
+            invoke("save_api_connection", { connection: currentConn }).catch(console.warn);
+          }
+          ensureActiveModelSelected();
+          updateTopBarPill();
+          renderModelDropdown();
+          renderConnectionsList();
+        }
+
+        assistantTurn.textBlock.innerHTML = `
+          <div class="chat-error-card">
+            <span class="error-badge">⚠️ النموذج متوقف أو غير متاح (HTTP 410 / 404)</span>
+            <p>
+              النموذج <code>${escapeHtml(activeModelId || "المحدد")}</code> وصل إلى نهاية الدعم (End of life) أو غير متوفر في حسابك لدى <strong>${escapeHtml(currentConn.name)}</strong>.
+            </p>
+            <div class="error-actions-row">
+              <button type="button" class="btn-error-action btn-refresh-models">🔄 جلب النماذج الحية المتوفرة</button>
+              <button type="button" class="btn-error-action secondary btn-pick-model">▼ اختيار نموذج آخر</button>
+            </div>
+          </div>
+        `;
+
+        const refreshBtn = assistantTurn.textBlock.querySelector(".btn-refresh-models");
+        if (refreshBtn) {
+          refreshBtn.addEventListener("click", () => {
+            openEditConnectionModal(currentConn);
+            handleFetchModels();
+          });
+        }
+        const pickBtn = assistantTurn.textBlock.querySelector(".btn-pick-model");
+        if (pickBtn) {
+          pickBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            modelDropdownMenu.classList.remove("hidden");
+          });
+        }
+      } else {
+        assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">خطأ في الاتصال بنقطة النهاية: ${escapeHtml(errStr)}</span>`;
+      }
     } finally {
       isStreaming = false;
       sendBtn.disabled = false;
@@ -1312,11 +1378,27 @@ function setupEventListeners() {
   });
 
   // Drawer
-  openDrawerBtn.addEventListener("click", () => openDrawer("tab-vault"));
-  closeDrawerBtn.addEventListener("click", closeDrawer);
-  drawerOverlay.addEventListener("click", (e) => {
-    if (e.target === drawerOverlay) closeDrawer();
-  });
+  if (openDrawerBtn) openDrawerBtn.addEventListener("click", () => openDrawer("tab-vault"));
+  const mobileDrawerBtn = document.getElementById("mobileDrawerBtn");
+  if (mobileDrawerBtn) mobileDrawerBtn.addEventListener("click", () => openDrawer("tab-vault"));
+
+  // Mobile New Chat Button
+  const mobileNewChatBtn = document.getElementById("mobileNewChatBtn");
+  if (mobileNewChatBtn) {
+    mobileNewChatBtn.addEventListener("click", () => {
+      streamMessages.innerHTML = "";
+      conversationHistory = [];
+      if (welcomeBanner) welcomeBanner.style.display = "block";
+      showToastNotification("تم بدء جلسة محادثة جديدة");
+    });
+  }
+
+  if (closeDrawerBtn) closeDrawerBtn.addEventListener("click", closeDrawer);
+  if (drawerOverlay) {
+    drawerOverlay.addEventListener("click", (e) => {
+      if (e.target === drawerOverlay) closeDrawer();
+    });
+  }
 
   // Drawer Tabs
   document.querySelectorAll(".drawer-tabs-nav .tab-btn").forEach(btn => {

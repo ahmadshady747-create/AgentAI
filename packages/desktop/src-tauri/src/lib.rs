@@ -637,7 +637,7 @@ async fn execute_session_turn(
                     || p_lower.contains("rust")))
         {
             resolved_tier = "coder";
-            resolved_model = "qwen/qwen2.5-coder-32b-instruct".into();
+            resolved_model = "meta/llama-3.3-70b-instruct".into();
         } else if model == "router/fast"
             || (model == "router/auto" && (p_lower.len() < 120 || p_lower.contains("fast") || p_lower.contains("quick")))
         {
@@ -1136,10 +1136,10 @@ fn load_connections() -> Vec<ApiConnection> {
     let file = get_connections_file();
     if let Ok(bytes) = fs::read_to_string(&file) {
         if let Ok(mut conns) = serde_json::from_str::<Vec<ApiConnection>>(&bytes) {
-            // Clean out legacy mock models from previously saved local config
+            // Clean out legacy mock & deprecated models from previously saved local config
             for c in conns.iter_mut() {
-                c.pinned_models.retain(|m| m != "mixtral-8x7b-32768" && !m.starts_with("mock-"));
-                c.all_models.retain(|m| m != "mixtral-8x7b-32768" && !m.starts_with("mock-"));
+                c.pinned_models.retain(|m| m != "mixtral-8x7b-32768" && !m.contains("qwen2.5-coder-32b") && !m.starts_with("mock-"));
+                c.all_models.retain(|m| m != "mixtral-8x7b-32768" && !m.contains("qwen2.5-coder-32b") && !m.starts_with("mock-"));
             }
             return conns;
         }
