@@ -34,7 +34,8 @@ Get the latest standalone release binary directly from the official GitHub Relea
 | Platform | Target Architecture | Package / Executable | Direct Download Link |
 | :--- | :--- | :--- | :--- |
 | **Android Mobile** | `aarch64` / `armv7` (Universal) | Signed Release APK (~10 MB) | [**📱 Download opencode-mobile-android.apk**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-mobile-android.apk) |
-| **Windows Desktop** | `x86_64` (Windows 10/11) | Native Executable (`.exe`) | [**📥 Download opencode-desktop-windows-x64.exe**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.exe) |
+| **Windows Desktop (Recommended)** | `x86_64` (Windows 10/11) | ZIP Package (~5.6 MB) | [**📦 Download opencode-desktop-windows-x64.zip**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.zip) |
+| **Windows Desktop** | `x86_64` (Windows 10/11) | Standalone Binary (`.exe`) | [**📥 Download opencode-desktop-windows-x64.exe**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.exe) |
 | **Linux Desktop** | `x86_64` (Ubuntu/Debian/Arch) | Standalone Executable / Deb | [**🐧 Download opencode-desktop-linux-x64**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-linux-x64) |
 | **macOS Desktop** | Apple Silicon & Intel | Standalone Binary | [**🍏 Download opencode-desktop-macos**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-macos) |
 

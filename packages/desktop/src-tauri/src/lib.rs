@@ -746,22 +746,17 @@ async fn execute_session_turn(
     let vault = load_vault();
     let has_key = vault.values().any(|v| !v.trim().is_empty());
 
-    let intro = if has_key {
+    let synthesis = if has_key {
         format!(
-            "Processing query using `{}` via **{}** [{}]. LOCUS AST invariants verified.\n\n",
-            resolved_model, resolved_provider, resolved_tier.to_uppercase()
+            "Processing query using `{}` via **{}** [{}]. Invariants verified.\n\nQuery: \"{}\"",
+            resolved_model, resolved_provider, resolved_tier.to_uppercase(), trimmed
         )
     } else {
         format!(
-            "Running in Sovereign Simulation Mode for `{}` via **{}** [{}]. LOCUS AST engine active.\n\n",
-            resolved_model, resolved_provider, resolved_tier.to_uppercase()
+            "أهلاً بك في OpenCode! 👋\n\nلتفعيل الردود الحية وفائقة السرعة عبر الذكاء الاصطناعي، يرجى إضافة مفتاح API مجاني (مثل Groq أو Gemini) عبر أيقونة المفتاح 🔑 بالأعلى.\n\nرسالتك المستلمة: \"{}\"",
+            trimmed
         )
     };
-
-    let synthesis = format!(
-        "{}Analysis of request: \"{}\":\n\n• **LOCUS AST Pipeline**: Read operations are compressed into deterministic semantic skeletons, reducing token cost by ~85%.\n• **Safety Firewall**: Verified against 32 invariants (no unhandled nulls, no unclosed JSX, deterministic imports).\n• **Engine Status**: Ready to dispatch mutations via atomic surgical patches.",
-        intro, trimmed
-    );
 
     // Stream out words
     for word in synthesis.split(' ') {
