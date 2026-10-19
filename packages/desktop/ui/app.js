@@ -12,35 +12,35 @@ const PRESETS = {
     url: "https://api.groq.com/openai/v1",
     portal: "https://console.groq.com/keys",
     hint: "أسرع معالجة LPU في العالم مع باقة مجانية كريمة تكفي لآلاف الرسائل اليومية.",
-    defaultModels: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    defaultModels: []
   },
   gemini: {
     name: "Google Gemini",
     url: "https://generativelanguage.googleapis.com/v1beta/openai",
     portal: "https://aistudio.google.com/app/apikey",
     hint: "نماذج Google Gemini 1.5 & 2.0 مجانية 100% مع نافذة سياق تصل لمليوني توكن.",
-    defaultModels: ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
+    defaultModels: []
   },
   nvidia: {
     name: "NVIDIA NIM",
     url: "https://integrate.api.nvidia.com/v1",
     portal: "https://build.nvidia.com/",
     hint: "رصيد 1,000 نقطة لتشغيل نماذج DeepSeek R1 و Llama 3.3 المستضافة على إنفيديا.",
-    defaultModels: ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen2.5-coder-32b-instruct"]
+    defaultModels: []
   },
   openrouter: {
     name: "OpenRouter",
     url: "https://openrouter.ai/api/v1",
     portal: "https://openrouter.ai/keys",
     hint: "بوابة عالمية موحدة لمئات النماذج المفتوحة والمجانية.",
-    defaultModels: ["meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-r1:free", "google/gemini-2.0-flash-exp:free"]
+    defaultModels: []
   },
   openai: {
     name: "OpenAI Official",
     url: "https://api.openai.com/v1",
     portal: "https://platform.openai.com/api-keys",
     hint: "الوصول المباشر لنماذج GPT-4o و o3-mini الرسمية.",
-    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini"]
+    defaultModels: []
   },
   custom: {
     name: "",
@@ -194,7 +194,7 @@ function ensureActiveModelSelected() {
 
   const first = enabledConns[0];
   activeConnectionId = first.id;
-  activeModelId = first.all_models[0] || "default";
+  activeModelId = first.pinned_models[0] || first.all_models[0] || null;
 }
 
 // --- RENDER TOP BAR PILL & DROPDOWN ---
@@ -203,8 +203,8 @@ function updateTopBarPill() {
 
   if (!currentConn || !activeModelId) {
     activeProviderDot.style.backgroundColor = "var(--accent-amber)";
-    activeProviderTag.textContent = "Universal";
-    activeModelTitle.textContent = "أضف اتصالاً للبدء (+)";
+    activeProviderTag.textContent = currentConn ? currentConn.name : "Universal";
+    activeModelTitle.textContent = currentConn ? "اضغط لتحديد نموذج" : "أضف اتصالاً للبدء (+)";
     return;
   }
 
@@ -428,6 +428,77 @@ function openAddConnectionModal() {
   connectionModal.classList.remove("hidden");
 }
 
+// Native External URL Opener (with IPC + Shell + Browser Fallbacks)
+async function openExternalUrl(url) {
+  if (!url) return;
+  // 1. Primary: Native Tauri Shell invoke
+  if (invoke) {
+    try {
+      await invoke("open_external_url", { url });
+      return;
+    } catch (err) {
+      console.warn("invoke(open_external_url) failed:", err);
+    }
+  }
+  // 2. Tauri JS Shell/Opener API
+  try {
+    if (window.__TAURI__?.shell?.open) {
+      await window.__TAURI__.shell.open(url);
+      return;
+    }
+    if (window.__TAURI__?.opener?.openUrl) {
+      await window.__TAURI__.opener.openUrl(url);
+      return;
+    }
+  } catch (err) {
+    console.warn("Tauri JS shell open failed:", err);
+  }
+  // 3. System browser / window.open
+  try {
+    const w = window.open(url, "_blank", "noopener,noreferrer");
+    if (w) return;
+  } catch (err) {
+    console.warn("window.open failed:", err);
+  }
+  // 4. Fallback navigation
+  window.location.href = url;
+}
+
+function setupPortalLinkHandlers(container) {
+  if (!container) return;
+  const link = container.querySelector(".direct-link");
+  if (link) {
+    link.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const url = link.getAttribute("data-url") || link.getAttribute("href");
+      await openExternalUrl(url);
+    });
+  }
+
+  const copyBtn = container.querySelector(".btn-copy-portal");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const url = copyBtn.getAttribute("data-url");
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        copyBtn.textContent = "تم النسخ ✓";
+        setTimeout(() => { copyBtn.textContent = "📋 نسخ الرابط"; }, 2500);
+      } catch (err) {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        copyBtn.textContent = "تم النسخ ✓";
+        setTimeout(() => { copyBtn.textContent = "📋 نسخ الرابط"; }, 2500);
+      }
+    });
+  }
+}
+
 function openEditConnectionModal(conn) {
   connModalId.value = conn.id;
   connModalTitle.textContent = `تعديل الاتصال: ${conn.name}`;
@@ -439,6 +510,26 @@ function openEditConnectionModal(conn) {
   connPortalHint.innerHTML = "";
   discoveryStatus.textContent = "";
   discoveredModelsList.innerHTML = "";
+
+  // Render matching portal hint if available
+  const matchedKey = Object.keys(PRESETS).find(k => {
+    try {
+      return PRESETS[k].url && conn.base_url.includes(new URL(PRESETS[k].url).hostname);
+    } catch {
+      return false;
+    }
+  });
+  if (matchedKey && PRESETS[matchedKey].portal) {
+    const p = PRESETS[matchedKey];
+    connPortalHint.innerHTML = `
+      <span>${p.hint}</span>
+      <div class="portal-link-row">
+        <a href="${p.portal}" target="_blank" rel="noopener noreferrer" class="direct-link" data-url="${p.portal}">🔗 رابط استخراج المفتاح</a>
+        <button type="button" class="btn-copy-portal" data-url="${p.portal}" title="نسخ رابط الاستخراج للحافظة">📋 نسخ الرابط</button>
+      </div>
+    `;
+    setupPortalLinkHandlers(connPortalHint);
+  }
 
   // Render existing models checklist
   const allAvailable = Array.from(new Set([...conn.pinned_models, ...conn.all_models]));
@@ -456,9 +547,14 @@ function applyPreset(presetKey) {
   });
 
   if (presetKey === "custom") {
-    connNameInput.placeholder = "مثلاً: المزود الخاص بي";
+    connNameInput.placeholder = "مثلاً: المزود الخاص بي أو Ollama محلي";
     connBaseUrlInput.placeholder = "https://your-api.com/v1";
     connPortalHint.innerHTML = `<span>${p.hint}</span>`;
+    discoveredModelsList.innerHTML = `
+      <div class="empty-models-notice">
+        <span>أدخل رابط نقطة النهاية ومفتاح الـ API ثم اضغط <b>[Verify & Fetch ⚡]</b> لجلب النماذج، أو أضف Model ID يدوياً.</span>
+      </div>
+    `;
     return;
   }
 
@@ -466,29 +562,35 @@ function applyPreset(presetKey) {
   connBaseUrlInput.value = p.url;
   connPortalHint.innerHTML = `
     <span>${p.hint}</span> 
-    ${p.portal ? `<a href="#" class="direct-link" data-url="${p.portal}" style="margin-right: 6px;">🔗 رابط استخراج المفتاح</a>` : ""}
+    <div class="portal-link-row">
+      ${p.portal ? `
+        <a href="${p.portal}" target="_blank" rel="noopener noreferrer" class="direct-link" data-url="${p.portal}">🔗 رابط استخراج المفتاح</a>
+        <button type="button" class="btn-copy-portal" data-url="${p.portal}" title="نسخ رابط الاستخراج للحافظة">📋 نسخ الرابط</button>
+      ` : ""}
+    </div>
   `;
 
-  // Attach direct link click handler
-  const link = connPortalHint.querySelector(".direct-link");
-  if (link) {
-    link.addEventListener("click", (e) => {
-      e.preventDefault();
-      const url = link.getAttribute("data-url");
-      if (invoke && url) {
-        invoke("open_external_url", { url });
-      } else if (url) {
-        window.open(url, "_blank");
-      }
-    });
-  }
+  // Attach direct link and copy handlers
+  setupPortalLinkHandlers(connPortalHint);
 
-  // Pre-fill default models in checklist
-  renderDiscoveredChecklist(p.defaultModels, [p.defaultModels[0]]);
+  // Clear models checklist — NEVER pre-fill default mock models!
+  discoveredModelsList.innerHTML = `
+    <div class="empty-models-notice">
+      <span>لا توجد نماذج مضافة بعد. الصق مفتاح الـ API الأساسي واضغط <b>[Verify & Fetch ⚡]</b> لجلب نماذج حسابك الفعلية، أو اكتب Model ID يدوياً.</span>
+    </div>
+  `;
 }
 
 function renderDiscoveredChecklist(models, pinned = []) {
   discoveredModelsList.innerHTML = "";
+  if (!models || models.length === 0) {
+    discoveredModelsList.innerHTML = `
+      <div class="empty-models-notice">
+        <span>لم يتم العثور على نماذج محفوظة بعد. اضغط <b>[Verify & Fetch ⚡]</b> بعد إدخال المفتاح لجلب النماذج الفعلية.</span>
+      </div>
+    `;
+    return;
+  }
   models.forEach(m => {
     const item = document.createElement("div");
     item.className = "discovered-model-item";
@@ -546,8 +648,8 @@ async function handleFetchModels() {
         status_code: 200,
         latency_ms: 118,
         status_type: "valid",
-        message: "المفتاح صالح ومفعّل (زمن الاستجابة: 118ms) - تم جلب 3 نماذج بنجاح.",
-        models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+        message: "المفتاح صالح ومفعّل (زمن الاستجابة: 118ms).",
+        models: testCandidate ? [testCandidate] : []
       };
     }
 

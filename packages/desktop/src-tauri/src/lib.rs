@@ -338,141 +338,29 @@ fn list_saved_providers() -> Vec<String> {
 
 #[tauri::command]
 fn list_available_models() -> Vec<ModelInfo> {
-    let vault = load_vault();
-    let has_groq = vault.contains_key("groq");
-    let has_gemini = vault.contains_key("gemini");
-    let has_nvidia = vault.contains_key("nvidia");
-    let has_openrouter = vault.contains_key("openrouter");
-
-    vec![
-        // 1. Groq LPU (Ultra-Fast)
-        ModelInfo {
-            id: "groq/llama-3.3-70b-versatile".into(),
-            name: "Llama 3.3 70B (500 tps)".into(),
-            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
-            context_window: 128_000,
-            recommended: true,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "groq/llama-3.1-8b-instant".into(),
-            name: "Llama 3.1 8B Instant".into(),
-            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
-            context_window: 128_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "groq/mixtral-8x7b-32768".into(),
-            name: "Mixtral 8x7B 32k".into(),
-            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
-            context_window: 32_768,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "groq/gemma2-9b-it".into(),
-            name: "Gemma 2 9B Instruct".into(),
-            provider: if has_groq { "Groq LPU (Active)" } else { "Groq LPU" }.into(),
-            context_window: 8_192,
-            recommended: false,
-            is_reasoning: false,
-        },
-
-        // 2. Google Gemini (Free & High Capacity)
-        ModelInfo {
-            id: "gemini/gemini-1.5-flash".into(),
-            name: "Gemini 1.5 Flash (1M ctx)".into(),
-            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
-            context_window: 1_000_000,
-            recommended: true,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "gemini/gemini-2.0-flash".into(),
-            name: "Gemini 2.0 Flash".into(),
-            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
-            context_window: 1_000_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "gemini/gemini-1.5-pro".into(),
-            name: "Gemini 1.5 Pro (Deep Reasoning)".into(),
-            provider: if has_gemini { "Google Gemini (Active)" } else { "Google Gemini" }.into(),
-            context_window: 2_000_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-
-        // 3. NVIDIA NIM (Hosted SOTA)
-        ModelInfo {
-            id: "nvidia/deepseek-ai/deepseek-r1".into(),
-            name: "DeepSeek R1 (NVIDIA Reasoning)".into(),
-            provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
-            context_window: 64_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-        ModelInfo {
-            id: "nvidia/meta/llama-3.3-70b-instruct".into(),
-            name: "Llama 3.3 70B Instruct".into(),
-            provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
-            context_window: 128_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "nvidia/qwen/qwen2.5-coder-32b-instruct".into(),
-            name: "Qwen 2.5 Coder 32B".into(),
-            provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
-            context_window: 128_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "nvidia/llama-3.1-nemotron-70b-instruct".into(),
-            name: "Nemotron 70B Enterprise".into(),
-            provider: if has_nvidia { "NVIDIA NIM (Active)" } else { "NVIDIA NIM" }.into(),
-            context_window: 128_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-
-        // 4. OpenRouter (Universal & Free Tier Models)
-        ModelInfo {
-            id: "openrouter/meta-llama/llama-3.3-70b-instruct:free".into(),
-            name: "Llama 3.3 70B (Free)".into(),
-            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
-            context_window: 128_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "openrouter/deepseek/deepseek-r1:free".into(),
-            name: "DeepSeek R1 (Free)".into(),
-            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
-            context_window: 64_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-        ModelInfo {
-            id: "openrouter/google/gemini-2.0-flash-exp:free".into(),
-            name: "Gemini 2.0 Flash Exp (Free)".into(),
-            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
-            context_window: 1_000_000,
-            recommended: false,
-            is_reasoning: false,
-        },
-        ModelInfo {
-            id: "openrouter/anthropic/claude-3.7-sonnet".into(),
-            name: "Claude 3.7 Sonnet".into(),
-            provider: if has_openrouter { "OpenRouter (Active)" } else { "OpenRouter" }.into(),
-            context_window: 200_000,
-            recommended: false,
-            is_reasoning: true,
-        },
-    ]
+    let conns = load_connections();
+    let mut list = Vec::new();
+    for conn in conns.into_iter().filter(|c| c.enabled) {
+        let models_set = if !conn.pinned_models.is_empty() {
+            conn.pinned_models.clone()
+        } else {
+            conn.all_models.clone()
+        };
+        for m in models_set {
+            let full_id = format!("{}/{}", conn.name.to_lowercase().replace(' ', "-"), m);
+            if !list.iter().any(|item: &ModelInfo| item.id == full_id || item.name == m) {
+                list.push(ModelInfo {
+                    id: full_id,
+                    name: m.clone(),
+                    provider: conn.name.clone(),
+                    context_window: 128_000,
+                    recommended: conn.pinned_models.contains(&m),
+                    is_reasoning: m.to_lowercase().contains("r1") || m.to_lowercase().contains("reasoning") || m.to_lowercase().contains("o3"),
+                });
+            }
+        }
+    }
+    list
 }
 
 // --- STREAMING SESSION TURN EXECUTION ---
@@ -1247,7 +1135,12 @@ fn get_connections_file() -> PathBuf {
 fn load_connections() -> Vec<ApiConnection> {
     let file = get_connections_file();
     if let Ok(bytes) = fs::read_to_string(&file) {
-        if let Ok(conns) = serde_json::from_str::<Vec<ApiConnection>>(&bytes) {
+        if let Ok(mut conns) = serde_json::from_str::<Vec<ApiConnection>>(&bytes) {
+            // Clean out legacy mock models from previously saved local config
+            for c in conns.iter_mut() {
+                c.pinned_models.retain(|m| m != "mixtral-8x7b-32768" && !m.starts_with("mock-"));
+                c.all_models.retain(|m| m != "mixtral-8x7b-32768" && !m.starts_with("mock-"));
+            }
             return conns;
         }
     }
@@ -1264,8 +1157,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 backup_keys: Vec::new(),
                 active_key_index: 0,
                 enabled: true,
-                pinned_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into()],
-                all_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into(), "mixtral-8x7b-32768".into()],
+                pinned_models: Vec::new(),
+                all_models: Vec::new(),
             });
         }
     }
@@ -1279,8 +1172,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 backup_keys: Vec::new(),
                 active_key_index: 0,
                 enabled: true,
-                pinned_models: vec!["gemini-1.5-flash".into()],
-                all_models: vec!["gemini-1.5-flash".into(), "gemini-2.0-flash".into(), "gemini-1.5-pro".into()],
+                pinned_models: Vec::new(),
+                all_models: Vec::new(),
             });
         }
     }
@@ -1294,8 +1187,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 backup_keys: Vec::new(),
                 active_key_index: 0,
                 enabled: true,
-                pinned_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
-                all_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
+                pinned_models: Vec::new(),
+                all_models: Vec::new(),
             });
         }
     }
@@ -1309,8 +1202,8 @@ fn load_connections() -> Vec<ApiConnection> {
                 backup_keys: Vec::new(),
                 active_key_index: 0,
                 enabled: true,
-                pinned_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into()],
-                all_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into(), "deepseek/deepseek-r1:free".into()],
+                pinned_models: Vec::new(),
+                all_models: Vec::new(),
             });
         }
     }
@@ -1566,7 +1459,19 @@ async fn validate_and_fetch_models(
                     format!("{}/chat/completions", clean_base)
                 };
 
-                let target_model = test_model.unwrap_or_else(|| "llama-3.3-70b-versatile".to_string());
+                let target_model = match test_model {
+                    Some(m) if !m.trim().is_empty() => m,
+                    _ => {
+                        return Ok(ValidationResult {
+                            success: false,
+                            status_code: 404,
+                            latency_ms,
+                            status_type: "not_found".into(),
+                            message: "نقطة /models غير مدعومة (404). يرجى إدخال Model ID يدوياً لاختبار نقطة المحادثة.".into(),
+                            models: Vec::new(),
+                        });
+                    }
+                };
                 let fallback_start = std::time::Instant::now();
                 let fallback_payload = serde_json::json!({
                     "model": target_model,
@@ -1749,22 +1654,19 @@ async fn send_universal_chat_request(
 }
 
 #[tauri::command]
-fn open_external_url(url: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("cmd").args(["/C", "start", "", &url]).spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = Command::new("open").arg(&url).spawn();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = Command::new("xdg-open").arg(&url).spawn();
-    }
-    #[cfg(target_os = "android")]
-    {
-        let _ = Command::new("am").args(["start", "-a", "android.intent.action.VIEW", "-d", &url]).spawn();
+#[allow(deprecated)]
+fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    if let Err(_e) = app.shell().open(&url, None) {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("cmd").args(["/C", "start", "", &url]).spawn();
+            return Ok(());
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err(format!("Failed to open URL: {}", _e));
+        }
     }
     Ok(())
 }
