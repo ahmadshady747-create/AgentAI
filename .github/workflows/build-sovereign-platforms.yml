@@ -130,3 +130,56 @@ jobs:
         run: |
           gh release view v2.0.32-sovereign --repo ${{ github.repository }} || gh release create v2.0.32-sovereign --title "OpenCode Sovereign Edition v2.0.32" --notes "Direct native release binaries" --repo ${{ github.repository }}
           gh release upload v2.0.32-sovereign release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk --repo ${{ github.repository }} --clobber
+
+  build-windows:
+    name: Build Windows x64 Desktop
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Desktop dependencies & Tauri CLI
+        run: |
+          npm install -g @tauri-apps/cli
+          npm --prefix packages/desktop install --no-workspaces --package-lock=false @tauri-apps/cli @tauri-apps/api
+
+      - name: Build Windows Executable
+        working-directory: packages/desktop
+        run: |
+          tauri build --no-bundle
+
+      - name: Package Windows ZIP
+        shell: pwsh
+        run: |
+          mkdir release-windows
+          $exe = Get-ChildItem -Path packages/desktop/src-tauri/target/release -Filter "opencode-desktop.exe" -Recurse | Select-Object -First 1
+          if ($exe) {
+            Copy-Item $exe.FullName -Destination release-windows/opencode-desktop.exe
+            Compress-Archive -Path release-windows/opencode-desktop.exe -DestinationPath release-windows/opencode-desktop-windows-x64.zip -Force
+            ls release-windows/
+          }
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-windows-zip
+          path: release-windows/*.zip
+
+      - name: Upload Windows to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release view v2.0.32-sovereign --repo ${{ github.repository }} || gh release create v2.0.32-sovereign --title "OpenCode Sovereign Edition v2.0.32" --notes "Direct native release binaries" --repo ${{ github.repository }}
+          gh release upload v2.0.32-sovereign release-windows/opencode-desktop-windows-x64.zip --repo ${{ github.repository }} --clobber
+
