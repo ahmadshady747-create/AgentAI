@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="app" class="app-layout">
-    <!-- 1. Minimal Top Status Bar (h-10) -->
+    <!-- 1. Minimal Top Status Bar (h-10 / 44px) -->
     <header class="top-status-bar" id="topStatusBar">
       <div class="bar-left">
         <div class="workspace-chip" id="workspacePathChip" title="المجلد الحالي للمشروع">
@@ -23,12 +23,12 @@
       </div>
 
       <div class="bar-center">
-        <!-- Unified Model Selector (4 Sovereign Providers Exclusively) -->
+        <!-- Unified Model Selector (Pinned Models across User's Active Connections) -->
         <div class="model-picker-container" id="modelPickerContainer">
           <div class="active-model-pill" id="activeModelPill" tabindex="0" role="button" aria-haspopup="listbox" title="تبديل النموذج (Ctrl+K)">
             <span class="provider-dot" id="activeProviderDot"></span>
-            <span class="provider-tag" id="activeProviderTag">Groq</span>
-            <span class="model-title" id="activeModelTitle">Llama 3.3 70B</span>
+            <span class="provider-tag" id="activeProviderTag">Universal</span>
+            <span class="model-title" id="activeModelTitle">اختر النموذج</span>
             <svg class="chevron-down" viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
               <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
             </svg>
@@ -37,17 +37,17 @@
           <!-- Dropdown Menu for Models -->
           <div class="model-dropdown-menu hidden" id="modelDropdownMenu" role="listbox">
             <div class="dropdown-header">
-              <span>اختر النموذج أو المزود المباشر</span>
+              <span>النماذج المثبتة من اتصالاتك النشطة</span>
               <kbd class="shortcut-tag">Ctrl+K</kbd>
             </div>
             
             <div class="dropdown-groups" id="modelDropdownGroups">
-              <!-- Dynamically populated from pinned models & active providers -->
+              <!-- Dynamically populated from user's pinned models per connection -->
             </div>
 
             <div class="dropdown-footer">
               <button type="button" class="btn-manage-models" id="openVaultFromDropdown">
-                <span>⚙️ إدارة المزودين والمفاتيح (API Vault)</span>
+                <span>⚙️ إدارة الاتصالات والمفاتيح (Universal Vault)</span>
               </button>
             </div>
           </div>
@@ -65,7 +65,7 @@
         <button type="button" class="command-center-btn" id="openDrawerBtn" title="مركز القيادة والإعدادات (Ctrl+,)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
           <span class="btn-label desktop-only">Command Center</span>
           <span class="settings-dot" id="drawerKeyIndicator"></span>
@@ -79,13 +79,11 @@
         <!-- Quiet Welcome Header -->
         <div class="welcome-banner" id="welcomeBanner">
           <div class="brand-monogram">⚡ opencode</div>
-          <p class="brand-subtext">التدفق الخطي الذكي بدون نوافذ مشتتة • سيادة تامة على المزودين الأربعة</p>
-          <div class="active-provider-chips">
-            <span class="chip-item">⚡ Groq LPU</span>
-            <span class="chip-item">✨ Gemini</span>
-            <span class="chip-item">🚀 NVIDIA NIM</span>
-            <span class="chip-item">🌐 OpenRouter</span>
-            <span class="chip-item">🔒 LOCUS AST</span>
+          <p class="brand-subtext">التدفق الخطي الذكي • محرك مزودات عالمي بدون أي نماذج افتراضية مفروضة</p>
+          <div class="active-provider-chips" id="welcomeProviderChips">
+            <span class="chip-item">🔒 Universal OpenAI Router</span>
+            <span class="chip-item">⚡ LOCUS AST Compression</span>
+            <span class="chip-item">🔌 MCP Context Hub</span>
           </div>
         </div>
 
@@ -168,7 +166,7 @@
         <div class="drawer-tabs-nav" role="tablist">
           <button type="button" class="tab-btn active" data-tab="tab-vault" role="tab" id="tabVaultBtn">
             <span class="tab-icon">🔑</span>
-            <span>المفاتيح والمزودون</span>
+            <span>المحرك العالمي للاتصالات</span>
           </button>
           <button type="button" class="tab-btn" data-tab="tab-mcp" role="tab" id="tabMcpBtn">
             <span class="tab-icon">🔌</span>
@@ -180,128 +178,26 @@
           </button>
         </div>
 
-        <!-- Tab 1: API Vault & Model Router -->
+        <!-- Tab 1: Universal API Vault (المحرك العالمي للمفاتيح والنماذج) -->
         <div class="tab-content-panel active" id="tab-vault" role="tabpanel">
-          <div class="tab-banner">
-            <p>إدارة مباشرة لمفاتيح المزودين الأربعة حصرياً. يتم تخزين المفاتيح مشفرة محلياً على جهازك ويتم اختبارها فورياً لجلب النماذج.</p>
+          <div class="tab-toolbar">
+            <p>محرك متوافق مع كافة نقاط نهاية OpenAI. أضف أي مزود أو شركة أو رابط محلي بحرية تامة دون أي قيود.</p>
+            <div class="toolbar-actions">
+              <button type="button" class="btn-action" id="openAddConnectionBtn">+ Add API Connection</button>
+            </div>
           </div>
 
-          <div class="provider-cards-stack">
-            <!-- 1. Groq -->
-            <div class="provider-card" id="card-groq">
-              <div class="provider-card-header">
-                <div class="provider-identity">
-                  <span class="provider-badge groq-badge">⚡ Groq Cloud</span>
-                  <span class="provider-endpoint">api.groq.com/openai/v1</span>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="toggle-groq" checked>
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <p class="provider-desc">أسرع معالجة ذكاء اصطناعي (LPU) في العالم مع حصص مجانية وفيرة يومياً.</p>
-              <div class="input-with-button">
-                <input type="password" id="key-groq" class="key-field" placeholder="gsk_..." dir="ltr" autocomplete="off">
-                <button type="button" class="btn-verify" data-provider="groq">
-                  <span>Verify & Fetch</span>
-                </button>
-              </div>
-              <div class="card-footer-links">
-                <a href="#" class="direct-link" data-url="https://console.groq.com/keys">🔗 استخراج مفتاح Groq مجاناً</a>
-                <span class="key-status-text" id="status-groq"></span>
-              </div>
-              <div class="pinned-models-box" id="pinned-groq-box">
-                <span class="pinned-label">النماذج المفضلة:</span>
-                <div class="pinned-chips" id="pinned-groq-chips"></div>
-              </div>
-            </div>
+          <!-- Connections List Container -->
+          <div class="connections-list" id="connectionsList">
+            <!-- Dynamically populated -->
+          </div>
 
-            <!-- 2. Google Gemini -->
-            <div class="provider-card" id="card-gemini">
-              <div class="provider-card-header">
-                <div class="provider-identity">
-                  <span class="provider-badge gemini-badge">✨ Google Gemini</span>
-                  <span class="provider-endpoint">generativelanguage.googleapis.com</span>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="toggle-gemini" checked>
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <p class="provider-desc">نماذج Gemini 1.5 & 2.0 من Google بسياق يصل لمليوني توكن مجاناً 100%.</p>
-              <div class="input-with-button">
-                <input type="password" id="key-gemini" class="key-field" placeholder="AIza..." dir="ltr" autocomplete="off">
-                <button type="button" class="btn-verify" data-provider="gemini">
-                  <span>Verify & Fetch</span>
-                </button>
-              </div>
-              <div class="card-footer-links">
-                <a href="#" class="direct-link" data-url="https://aistudio.google.com/app/apikey">🔗 استخراج مفتاح Gemini مجاناً</a>
-                <span class="key-status-text" id="status-gemini"></span>
-              </div>
-              <div class="pinned-models-box" id="pinned-gemini-box">
-                <span class="pinned-label">النماذج المفضلة:</span>
-                <div class="pinned-chips" id="pinned-gemini-chips"></div>
-              </div>
-            </div>
-
-            <!-- 3. NVIDIA NIM -->
-            <div class="provider-card" id="card-nvidia">
-              <div class="provider-card-header">
-                <div class="provider-identity">
-                  <span class="provider-badge nvidia-badge">🚀 NVIDIA NIM</span>
-                  <span class="provider-endpoint">integrate.api.nvidia.com/v1</span>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="toggle-nvidia" checked>
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <p class="provider-desc">نماذج DeepSeek R1 و Llama 3.3 المستضافة على بنية إنفيديا السحابية الفائقة.</p>
-              <div class="input-with-button">
-                <input type="password" id="key-nvidia" class="key-field" placeholder="nvapi-..." dir="ltr" autocomplete="off">
-                <button type="button" class="btn-verify" data-provider="nvidia">
-                  <span>Verify & Fetch</span>
-                </button>
-              </div>
-              <div class="card-footer-links">
-                <a href="#" class="direct-link" data-url="https://build.nvidia.com/">🔗 استخراج مفتاح NVIDIA NIM</a>
-                <span class="key-status-text" id="status-nvidia"></span>
-              </div>
-              <div class="pinned-models-box" id="pinned-nvidia-box">
-                <span class="pinned-label">النماذج المفضلة:</span>
-                <div class="pinned-chips" id="pinned-nvidia-chips"></div>
-              </div>
-            </div>
-
-            <!-- 4. OpenRouter -->
-            <div class="provider-card" id="card-openrouter">
-              <div class="provider-card-header">
-                <div class="provider-identity">
-                  <span class="provider-badge openrouter-badge">🌐 OpenRouter</span>
-                  <span class="provider-endpoint">openrouter.ai/api/v1</span>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="toggle-openrouter" checked>
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-              <p class="provider-desc">بوابة موحدة للنماذج المفتوحة والمجانية العالمية بدون بطاقة بنكية.</p>
-              <div class="input-with-button">
-                <input type="password" id="key-openrouter" class="key-field" placeholder="sk-or-..." dir="ltr" autocomplete="off">
-                <button type="button" class="btn-verify" data-provider="openrouter">
-                  <span>Verify & Fetch</span>
-                </button>
-              </div>
-              <div class="card-footer-links">
-                <a href="#" class="direct-link" data-url="https://openrouter.ai/keys">🔗 استخراج مفتاح OpenRouter</a>
-                <span class="key-status-text" id="status-openrouter"></span>
-              </div>
-              <div class="pinned-models-box" id="pinned-openrouter-box">
-                <span class="pinned-label">النماذج المفضلة:</span>
-                <div class="pinned-chips" id="pinned-openrouter-chips"></div>
-              </div>
-            </div>
+          <!-- Empty State (Shown when no connections exist) -->
+          <div class="empty-state-card hidden" id="emptyConnectionsState">
+            <div class="empty-icon">🌐</div>
+            <h4>لا توجد اتصالات مضافة بعد</h4>
+            <p>أضف اتصالك الأول للبدء في استخدام النماذج بحرية عبر أي مزود تريده.</p>
+            <button type="button" class="btn-action" id="emptyAddConnBtn">+ Add API Connection</button>
           </div>
         </div>
 
@@ -347,7 +243,79 @@
       </div>
     </div>
 
-    <!-- 5. Modal: Add New MCP Server -->
+    <!-- 5. Modal: Add / Edit API Connection (Universal Engine) -->
+    <div class="modal-dialog-backdrop hidden" id="connectionModal">
+      <div class="modal-dialog-window" dir="rtl">
+        <div class="modal-header">
+          <h4 id="connectionModalTitle">إضافة اتصال مزود جديد (Universal Connection)</h4>
+          <button type="button" class="btn-close-modal" id="closeConnectionModal">&times;</button>
+        </div>
+        <div class="modal-form">
+          <!-- Hidden ID for editing existing connections -->
+          <input type="hidden" id="connModalId">
+
+          <!-- Quick Fill Presets -->
+          <div class="field-row">
+            <label>أزرار تعبئة سريعة اختيارية (Quick Presets):</label>
+            <div class="presets-row">
+              <button type="button" class="preset-pill" data-preset="groq">⚡ Groq</button>
+              <button type="button" class="preset-pill" data-preset="gemini">✨ Gemini</button>
+              <button type="button" class="preset-pill" data-preset="nvidia">🚀 NVIDIA NIM</button>
+              <button type="button" class="preset-pill" data-preset="openrouter">🌐 OpenRouter</button>
+              <button type="button" class="preset-pill" data-preset="openai">🤖 OpenAI</button>
+              <button type="button" class="preset-pill" data-preset="custom">Custom</button>
+            </div>
+          </div>
+
+          <!-- Connection Name -->
+          <div class="field-row">
+            <label>اسم الاتصال (Connection Name):</label>
+            <input type="text" id="connNameInput" placeholder="مثلاً: حساب جروك ١ أو عرض مجاني جديد">
+          </div>
+
+          <!-- Base URL -->
+          <div class="field-row">
+            <label>رابط نقطة النهاية (Base URL):</label>
+            <input type="text" id="connBaseUrlInput" placeholder="https://api.groq.com/openai/v1" dir="ltr">
+            <div class="field-hint" id="connPortalHint"></div>
+          </div>
+
+          <!-- API Key -->
+          <div class="field-row">
+            <label>مفتاح الـ API (API Key):</label>
+            <div class="key-input-wrapper">
+              <input type="password" id="connKeyInput" placeholder="الصق المفتاح هنا..." dir="ltr" autocomplete="off">
+              <button type="button" class="btn-toggle-key" id="toggleKeyVisibility" title="إظهار / إخفاء المفتاح">👁️</button>
+            </div>
+          </div>
+
+          <!-- Model Discovery & Pinning -->
+          <div class="discovery-section">
+            <div class="discovery-header">
+              <label>جلب وتثبيت النماذج للقائمة العلوية:</label>
+              <button type="button" class="btn-small" id="fetchModelsBtn">Fetch Models 🔄</button>
+            </div>
+            <div class="discovery-status" id="discoveryStatus"></div>
+
+            <!-- Manual Model Entry -->
+            <div class="manual-model-row">
+              <input type="text" id="manualModelInput" placeholder="أو اكتب Model ID يدوياً..." dir="ltr">
+              <button type="button" class="btn-small" id="addManualModelBtn">+ Add</button>
+            </div>
+
+            <!-- Discovered Models Checklist -->
+            <div class="discovered-models-list" id="discoveredModelsList">
+              <!-- Checkboxes populate dynamically -->
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-submit" id="saveConnectionBtn">حفظ وتفعيل الاتصال</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Modal: Add New MCP Server -->
     <div class="modal-dialog-backdrop hidden" id="addMcpModal">
       <div class="modal-dialog-window" dir="rtl">
         <div class="modal-header">
@@ -382,7 +350,7 @@
       </div>
     </div>
 
-    <!-- 6. Modal: Add New Skill -->
+    <!-- 7. Modal: Add New Skill -->
     <div class="modal-dialog-backdrop hidden" id="addSkillModal">
       <div class="modal-dialog-window" dir="rtl">
         <div class="modal-header">

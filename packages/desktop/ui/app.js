@@ -1,85 +1,65 @@
 // OpenCode Sovereign — Claude Code / Codex Aesthetic Client
-// Exclusively 4 Sovereign Providers: Groq, Gemini, NVIDIA NIM, OpenRouter
+// Universal OpenAI-Compatible Engine (Dynamic Connections, Fetch & Pin Models)
 // Zero reliance on default/internal OpenCode servers.
 
 const invoke = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke || null;
 const listen = window.__TAURI__?.event?.listen || null;
 
-// --- CONFIGURATION & 4 SOVEREIGN PROVIDERS ---
-const PROVIDERS = {
+// --- QUICK PRESETS DEFINITIONS ---
+const PRESETS = {
   groq: {
-    id: "groq",
     name: "Groq Cloud",
-    shortName: "Groq",
-    tag: "LPU",
-    url: "https://api.groq.com/openai/v1/chat/completions",
-    modelsUrl: "https://api.groq.com/openai/v1/models",
-    portalUrl: "https://console.groq.com/keys",
-    defaultModel: "llama-3.3-70b-versatile",
-    defaultModels: [
-      { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (500 tps)", context: "128k" },
-      { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant", context: "128k" },
-      { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", context: "32k" }
-    ]
+    url: "https://api.groq.com/openai/v1",
+    portal: "https://console.groq.com/keys",
+    hint: "أسرع معالجة LPU في العالم مع باقة مجانية كريمة تكفي لآلاف الرسائل اليومية.",
+    defaultModels: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
   },
   gemini: {
-    id: "gemini",
     name: "Google Gemini",
-    shortName: "Gemini",
-    tag: "Google",
-    url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    modelsUrl: "https://generativelanguage.googleapis.com/v1beta/openai/models",
-    portalUrl: "https://aistudio.google.com/app/apikey",
-    defaultModel: "gemini-1.5-flash",
-    defaultModels: [
-      { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash (1M ctx)", context: "1M" },
-      { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", context: "1M" },
-      { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", context: "2M" }
-    ]
+    url: "https://generativelanguage.googleapis.com/v1beta/openai",
+    portal: "https://aistudio.google.com/app/apikey",
+    hint: "نماذج Google Gemini 1.5 & 2.0 مجانية 100% مع نافذة سياق تصل لمليوني توكن.",
+    defaultModels: ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
   },
   nvidia: {
-    id: "nvidia",
     name: "NVIDIA NIM",
-    shortName: "NVIDIA",
-    tag: "NIM",
-    url: "https://integrate.api.nvidia.com/v1/chat/completions",
-    modelsUrl: "https://integrate.api.nvidia.com/v1/models",
-    portalUrl: "https://build.nvidia.com/",
-    defaultModel: "meta/llama-3.3-70b-instruct",
-    defaultModels: [
-      { id: "meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct", context: "128k" },
-      { id: "deepseek-ai/deepseek-r1", name: "DeepSeek R1 (Reasoning)", context: "64k" },
-      { id: "qwen/qwen2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B", context: "128k" }
-    ]
+    url: "https://integrate.api.nvidia.com/v1",
+    portal: "https://build.nvidia.com/",
+    hint: "رصيد 1,000 نقطة لتشغيل نماذج DeepSeek R1 و Llama 3.3 المستضافة على إنفيديا.",
+    defaultModels: ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-r1", "qwen/qwen2.5-coder-32b-instruct"]
   },
   openrouter: {
-    id: "openrouter",
     name: "OpenRouter",
-    shortName: "OpenRouter",
-    tag: "Router",
-    url: "https://openrouter.ai/api/v1/chat/completions",
-    modelsUrl: "https://openrouter.ai/api/v1/models",
-    portalUrl: "https://openrouter.ai/keys",
-    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
-    defaultModels: [
-      { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (Free)", context: "128k" },
-      { id: "deepseek/deepseek-r1:free", name: "DeepSeek R1 (Free)", context: "64k" },
-      { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash Exp (Free)", context: "1M" }
-    ]
+    url: "https://openrouter.ai/api/v1",
+    portal: "https://openrouter.ai/keys",
+    hint: "بوابة عالمية موحدة لمئات النماذج المفتوحة والمجانية.",
+    defaultModels: ["meta-llama/llama-3.3-70b-instruct:free", "deepseek/deepseek-r1:free", "google/gemini-2.0-flash-exp:free"]
+  },
+  openai: {
+    name: "OpenAI Official",
+    url: "https://api.openai.com/v1",
+    portal: "https://platform.openai.com/api-keys",
+    hint: "الوصول المباشر لنماذج GPT-4o و o3-mini الرسمية.",
+    defaultModels: ["gpt-4o", "gpt-4o-mini", "o3-mini"]
+  },
+  custom: {
+    name: "",
+    url: "",
+    portal: "",
+    hint: "أدخل أي رابط لنقطة نهاية متوافقة مع OpenAI (سحابية أو محلية مثل Ollama/vLLM).",
+    defaultModels: []
   }
 };
 
 // State
-let activeProviderId = "groq";
-let activeModelId = "llama-3.3-70b-versatile";
-let activeModelName = "Llama 3.3 70B";
+let apiConnections = [];
+let activeConnectionId = null;
+let activeModelId = null;
 let isStreaming = false;
 let latestDiffCard = null;
-let providerKeys = { groq: "", gemini: "", nvidia: "", openrouter: "" };
-let pinnedModels = [];
+let currentStreamBuffer = "";
 let mcpServers = [];
 let skillsList = [];
-let currentStreamBuffer = "";
 
 // Conversation History
 const conversationHistory = [
@@ -111,7 +91,29 @@ const drawerKeyIndicator = document.getElementById("drawerKeyIndicator");
 const drawerOverlay = document.getElementById("drawerOverlay");
 const drawerSheet = document.getElementById("drawerSheet");
 const closeDrawerBtn = document.getElementById("closeDrawerBtn");
-const dragHandleBar = document.getElementById("dragHandleBar");
+
+// Universal API Vault Tab
+const connectionsList = document.getElementById("connectionsList");
+const emptyConnectionsState = document.getElementById("emptyConnectionsState");
+const openAddConnectionBtn = document.getElementById("openAddConnectionBtn");
+const emptyAddConnBtn = document.getElementById("emptyAddConnBtn");
+
+// Connection Modal
+const connectionModal = document.getElementById("connectionModal");
+const closeConnectionModal = document.getElementById("closeConnectionModal");
+const connModalId = document.getElementById("connModalId");
+const connModalTitle = document.getElementById("connectionModalTitle");
+const connNameInput = document.getElementById("connNameInput");
+const connBaseUrlInput = document.getElementById("connBaseUrlInput");
+const connKeyInput = document.getElementById("connKeyInput");
+const connPortalHint = document.getElementById("connPortalHint");
+const toggleKeyVisibility = document.getElementById("toggleKeyVisibility");
+const fetchModelsBtn = document.getElementById("fetchModelsBtn");
+const discoveryStatus = document.getElementById("discoveryStatus");
+const manualModelInput = document.getElementById("manualModelInput");
+const addManualModelBtn = document.getElementById("addManualModelBtn");
+const discoveredModelsList = document.getElementById("discoveredModelsList");
+const saveConnectionBtn = document.getElementById("saveConnectionBtn");
 
 // Popups & Modals
 const autocompletePopup = document.getElementById("autocompletePopup");
@@ -124,169 +126,346 @@ const addSkillModal = document.getElementById("addSkillModal");
 document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   setupKeyboardShortcuts();
-  await loadVaultAndModels();
+  await loadConnections();
   await loadMcpConfig();
   await loadSkillsConfig();
   await checkLocusPulse();
 });
 
-// --- LOAD VAULT & MODELS ---
-async function loadVaultAndModels() {
+// --- LOAD CONNECTIONS ---
+async function loadConnections() {
   if (invoke) {
     try {
-      for (const prov of Object.keys(PROVIDERS)) {
-        const key = await invoke("get_api_key", { provider: prov });
-        if (key) {
-          providerKeys[prov] = key;
-          const keyInput = document.getElementById(`key-${prov}`);
-          if (keyInput) keyInput.value = key;
-          const statusText = document.getElementById(`status-${prov}`);
-          if (statusText) {
-            statusText.textContent = "✓ المفتاح مفعل";
-            statusText.style.color = "var(--accent-green)";
-          }
-        }
-      }
-
-      pinnedModels = await invoke("get_pinned_models");
+      apiConnections = await invoke("get_api_connections");
     } catch (e) {
-      console.warn("Vault load warning:", e);
+      console.warn("Failed to load connections:", e);
+      apiConnections = [];
     }
   }
 
-  // Update Drawer indicator
-  const hasAnyKey = Object.values(providerKeys).some(k => k && k.trim().length > 0);
+  // Update Drawer status indicator
+  const hasActive = apiConnections.some(c => c.enabled && c.api_key.trim().length > 0);
   if (drawerKeyIndicator) {
-    drawerKeyIndicator.style.backgroundColor = hasAnyKey ? "var(--accent-green)" : "var(--accent-amber)";
+    drawerKeyIndicator.style.backgroundColor = hasActive ? "var(--accent-green)" : "var(--accent-amber)";
   }
 
+  // Set active model if not set
+  ensureActiveModelSelected();
+
+  renderConnectionsList();
   renderModelDropdown();
-  renderPinnedModelChips();
   updateTopBarPill();
+}
+
+function ensureActiveModelSelected() {
+  const enabledConns = apiConnections.filter(c => c.enabled);
+  if (enabledConns.length === 0) {
+    activeConnectionId = null;
+    activeModelId = null;
+    return;
+  }
+
+  // Check if current active selection is still valid
+  const currentConn = enabledConns.find(c => c.id === activeConnectionId);
+  if (currentConn) {
+    if (activeModelId && (currentConn.pinned_models.includes(activeModelId) || currentConn.all_models.includes(activeModelId))) {
+      return;
+    }
+    if (currentConn.pinned_models.length > 0) {
+      activeModelId = currentConn.pinned_models[0];
+      return;
+    }
+    if (currentConn.all_models.length > 0) {
+      activeModelId = currentConn.all_models[0];
+      return;
+    }
+  }
+
+  // Pick first enabled connection with pinned or available models
+  for (const conn of enabledConns) {
+    if (conn.pinned_models.length > 0) {
+      activeConnectionId = conn.id;
+      activeModelId = conn.pinned_models[0];
+      return;
+    }
+  }
+
+  const first = enabledConns[0];
+  activeConnectionId = first.id;
+  activeModelId = first.all_models[0] || "default";
 }
 
 // --- RENDER TOP BAR PILL & DROPDOWN ---
 function updateTopBarPill() {
-  const provider = PROVIDERS[activeProviderId] || PROVIDERS.groq;
-  activeProviderTag.textContent = provider.shortName;
-  activeModelTitle.textContent = activeModelName;
+  const currentConn = apiConnections.find(c => c.id === activeConnectionId);
+
+  if (!currentConn || !activeModelId) {
+    activeProviderDot.style.backgroundColor = "var(--accent-amber)";
+    activeProviderTag.textContent = "Universal";
+    activeModelTitle.textContent = "أضف اتصالاً للبدء (+)";
+    return;
+  }
+
+  activeProviderDot.style.backgroundColor = "var(--accent-green)";
+  activeProviderDot.style.boxShadow = "0 0 6px rgba(16, 185, 129, 0.7)";
+  activeProviderTag.textContent = currentConn.name.length > 12 ? currentConn.name.substring(0, 10) + ".." : currentConn.name;
   
-  const hasKey = !!providerKeys[activeProviderId];
-  activeProviderDot.style.backgroundColor = hasKey ? "var(--accent-green)" : "var(--accent-amber)";
-  activeProviderDot.style.boxShadow = hasKey 
-    ? "0 0 6px rgba(16, 185, 129, 0.7)" 
-    : "0 0 6px rgba(245, 158, 11, 0.7)";
+  // Format clean display name
+  const cleanModelName = activeModelId.includes("/") 
+    ? activeModelId.split("/").pop() 
+    : activeModelId;
+  activeModelTitle.textContent = cleanModelName;
 }
 
 function renderModelDropdown() {
   modelDropdownGroups.innerHTML = "";
 
-  for (const [pId, prov] of Object.entries(PROVIDERS)) {
+  const enabledConns = apiConnections.filter(c => c.enabled);
+
+  if (enabledConns.length === 0) {
+    const emptyNotice = document.createElement("div");
+    emptyNotice.style.padding = "16px 12px";
+    emptyNotice.style.textAlign = "center";
+    emptyNotice.style.fontSize = "12px";
+    emptyNotice.style.color = "var(--text-muted)";
+    emptyNotice.innerHTML = `
+      <span>لا توجد اتصالات نشطة حالياً.</span><br>
+      <button type="button" class="btn-small" style="margin-top: 8px;" id="dropdownAddConnBtn">+ إضافة اتصال جديد</button>
+    `;
+    modelDropdownGroups.appendChild(emptyNotice);
+
+    const btn = emptyNotice.querySelector("#dropdownAddConnBtn");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        modelDropdownMenu.classList.add("hidden");
+        openAddConnectionModal();
+      });
+    }
+    return;
+  }
+
+  enabledConns.forEach(conn => {
     const groupDiv = document.createElement("div");
     groupDiv.className = "dropdown-group";
 
     const titleDiv = document.createElement("div");
     titleDiv.className = "dropdown-group-title";
-    titleDiv.textContent = `${prov.name} (${prov.tag})`;
+    titleDiv.textContent = conn.name;
     groupDiv.appendChild(titleDiv);
 
-    prov.defaultModels.forEach(m => {
-      const item = document.createElement("div");
-      const isSelected = (activeProviderId === pId && activeModelId === m.id);
-      item.className = `dropdown-item ${isSelected ? "selected" : ""}`;
-      item.innerHTML = `
-        <span>${m.name}</span>
-        <span style="font-size: 10.5px; color: var(--text-faint);">${m.context}</span>
-      `;
-      item.addEventListener("click", () => {
-        selectModel(pId, m.id, m.name);
-        modelDropdownMenu.classList.add("hidden");
+    // Show pinned models (or all models if none pinned)
+    const modelsToShow = conn.pinned_models.length > 0 ? conn.pinned_models : conn.all_models;
+
+    if (modelsToShow.length === 0) {
+      const noModels = document.createElement("div");
+      noModels.style.padding = "4px 12px";
+      noModels.style.fontSize = "11px";
+      noModels.style.color = "var(--text-faint)";
+      noModels.textContent = "لم يتم تحديد أي نموذج (اضغط تثبيت النماذج من الإعدادات)";
+      groupDiv.appendChild(noModels);
+    } else {
+      modelsToShow.forEach(mId => {
+        const item = document.createElement("div");
+        const isSelected = (activeConnectionId === conn.id && activeModelId === mId);
+        item.className = `dropdown-item ${isSelected ? "selected" : ""}`;
+        item.innerHTML = `
+          <span>${escapeHtml(mId)}</span>
+          ${isSelected ? '<span style="color: var(--accent-green); font-size: 11px;">✓ نشط</span>' : ''}
+        `;
+        item.addEventListener("click", () => {
+          activeConnectionId = conn.id;
+          activeModelId = mId;
+          updateTopBarPill();
+          renderModelDropdown();
+          modelDropdownMenu.classList.add("hidden");
+        });
+        groupDiv.appendChild(item);
       });
-      groupDiv.appendChild(item);
-    });
+    }
 
     modelDropdownGroups.appendChild(groupDiv);
+  });
+}
+
+// --- RENDER CONNECTIONS LIST (TAB 1) ---
+function renderConnectionsList() {
+  if (!connectionsList || !emptyConnectionsState) return;
+
+  if (apiConnections.length === 0) {
+    connectionsList.innerHTML = "";
+    emptyConnectionsState.classList.remove("hidden");
+    return;
   }
-}
 
-function selectModel(providerId, modelId, modelName) {
-  activeProviderId = providerId;
-  activeModelId = modelId;
-  activeModelName = modelName;
-  updateTopBarPill();
-}
+  emptyConnectionsState.classList.add("hidden");
+  connectionsList.innerHTML = "";
 
-// --- PINNED CHIPS IN DRAWER ---
-function renderPinnedModelChips() {
-  for (const [pId, prov] of Object.entries(PROVIDERS)) {
-    const container = document.getElementById(`pinned-${pId}-chips`);
-    if (!container) continue;
-    container.innerHTML = "";
+  apiConnections.forEach(conn => {
+    const card = document.createElement("div");
+    card.className = "connection-card";
+    
+    // Mask key for safety
+    const maskedKey = conn.api_key.length > 8 
+      ? conn.api_key.substring(0, 4) + "••••••••" + conn.api_key.substring(conn.api_key.length - 4)
+      : "••••••••";
 
-    prov.defaultModels.forEach(m => {
-      const chip = document.createElement("span");
-      const isPinned = pinnedModels.includes(`${pId}/${m.id}`) || m.id === prov.defaultModel;
-      chip.className = `model-chip ${isPinned ? "pinned" : ""}`;
-      chip.textContent = m.name;
-      chip.title = "انقر لتفعيل / إلغاء التفضيل في القائمة";
-      chip.addEventListener("click", async () => {
-        const fullId = `${pId}/${m.id}`;
-        if (pinnedModels.includes(fullId)) {
-          pinnedModels = pinnedModels.filter(id => id !== fullId);
-        } else {
-          pinnedModels.push(fullId);
-        }
+    card.innerHTML = `
+      <div class="connection-card-header">
+        <div class="connection-identity">
+          <div class="connection-name-row">
+            <span class="connection-name">${escapeHtml(conn.name)}</span>
+            <span class="connection-url-badge">${escapeHtml(conn.base_url)}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-faint); font-family: var(--font-mono);">
+            <span>Key: ${escapeHtml(maskedKey)}</span>
+          </div>
+        </div>
+
+        <div class="connection-actions-row">
+          <button type="button" class="btn-card-icon btn-edit-conn" title="تعديل الاتصال">✏️</button>
+          <button type="button" class="btn-card-icon btn-card-delete btn-delete-conn" title="حذف الاتصال">🗑️</button>
+          <label class="toggle-switch" title="تفعيل / تعطيل الاتصال">
+            <input type="checkbox" class="conn-toggle" ${conn.enabled ? "checked" : ""}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Pinned Models Section -->
+      <div class="connection-models-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span class="models-section-label">النماذج المثبتة في القائمة العلوية:</span>
+          <span style="font-size: 10.5px; color: var(--text-faint);">${conn.pinned_models.length} مثبت</span>
+        </div>
+        <div class="models-chips-wrap">
+          ${renderConnectionChips(conn)}
+        </div>
+      </div>
+    `;
+
+    // Toggle connection enabled
+    const toggle = card.querySelector(".conn-toggle");
+    toggle.addEventListener("change", async () => {
+      conn.enabled = toggle.checked;
+      if (invoke) {
+        apiConnections = await invoke("toggle_api_connection", { id: conn.id, enabled: conn.enabled });
+      }
+      loadConnections();
+    });
+
+    // Edit connection
+    card.querySelector(".btn-edit-conn").addEventListener("click", () => {
+      openEditConnectionModal(conn);
+    });
+
+    // Delete connection
+    card.querySelector(".btn-delete-conn").addEventListener("click", async () => {
+      if (confirm(`هل أنت متأكد من حذف الاتصال "${conn.name}"؟`)) {
         if (invoke) {
-          await invoke("save_pinned_models", { models: pinnedModels });
+          apiConnections = await invoke("delete_api_connection", { id: conn.id });
+        } else {
+          apiConnections = apiConnections.filter(c => c.id !== conn.id);
         }
-        renderPinnedModelChips();
-      });
-      container.appendChild(chip);
+        loadConnections();
+      }
     });
-  }
+
+    // Click on model chip to toggle pin
+    card.querySelectorAll(".model-pin-chip").forEach(chip => {
+      chip.addEventListener("click", async () => {
+        const mId = chip.getAttribute("data-model");
+        if (invoke) {
+          apiConnections = await invoke("toggle_pinned_model", { connectionId: conn.id, modelId: mId });
+        } else {
+          if (conn.pinned_models.includes(mId)) {
+            conn.pinned_models = conn.pinned_models.filter(m => m !== mId);
+          } else {
+            conn.pinned_models.push(mId);
+          }
+        }
+        loadConnections();
+      });
+    });
+
+    connectionsList.appendChild(card);
+  });
 }
 
-// --- EVENT LISTENERS ---
-function setupEventListeners() {
-  // Model Dropdown Toggle
-  activeModelPill.addEventListener("click", (e) => {
-    e.stopPropagation();
-    modelDropdownMenu.classList.toggle("hidden");
+function renderConnectionChips(conn) {
+  const allAvailable = Array.from(new Set([...conn.pinned_models, ...conn.all_models]));
+  if (allAvailable.length === 0) {
+    return `<span style="font-size: 11px; color: var(--text-faint);">لا توجد نماذج مضافة (اضغط ✏️ لجلب النماذج)</span>`;
+  }
+
+  return allAvailable.map(mId => {
+    const isPinned = conn.pinned_models.includes(mId);
+    return `
+      <span class="model-pin-chip ${isPinned ? "pinned" : ""}" data-model="${escapeHtml(mId)}" title="انقر لتثبيت / إلغاء تثبيت النموذج في القائمة">
+        ${isPinned ? "✓ " : ""}${escapeHtml(mId)}
+      </span>
+    `;
+  }).join("");
+}
+
+// --- CONNECTION MODAL (ADD / EDIT) ---
+function openAddConnectionModal() {
+  connModalId.value = "";
+  connModalTitle.textContent = "إضافة اتصال مزود جديد (Universal API)";
+  connNameInput.value = "";
+  connBaseUrlInput.value = "";
+  connKeyInput.value = "";
+  connPortalHint.innerHTML = "";
+  discoveryStatus.textContent = "";
+  discoveredModelsList.innerHTML = "";
+
+  // Apply default preset (Groq)
+  applyPreset("groq");
+
+  connectionModal.classList.remove("hidden");
+}
+
+function openEditConnectionModal(conn) {
+  connModalId.value = conn.id;
+  connModalTitle.textContent = `تعديل الاتصال: ${conn.name}`;
+  connNameInput.value = conn.name;
+  connBaseUrlInput.value = conn.base_url;
+  connKeyInput.value = conn.api_key;
+  connPortalHint.innerHTML = "";
+  discoveryStatus.textContent = "";
+  discoveredModelsList.innerHTML = "";
+
+  // Render existing models checklist
+  const allAvailable = Array.from(new Set([...conn.pinned_models, ...conn.all_models]));
+  renderDiscoveredChecklist(allAvailable, conn.pinned_models);
+
+  connectionModal.classList.remove("hidden");
+}
+
+function applyPreset(presetKey) {
+  const p = PRESETS[presetKey];
+  if (!p) return;
+
+  document.querySelectorAll(".preset-pill").forEach(pill => {
+    pill.classList.toggle("active", pill.getAttribute("data-preset") === presetKey);
   });
 
-  document.addEventListener("click", (e) => {
-    if (!modelDropdownMenu.contains(e.target) && !activeModelPill.contains(e.target)) {
-      modelDropdownMenu.classList.add("hidden");
-    }
-  });
+  if (presetKey === "custom") {
+    connNameInput.placeholder = "مثلاً: المزود الخاص بي";
+    connBaseUrlInput.placeholder = "https://your-api.com/v1";
+    connPortalHint.innerHTML = `<span>${p.hint}</span>`;
+    return;
+  }
 
-  openVaultFromDropdown.addEventListener("click", () => {
-    modelDropdownMenu.classList.add("hidden");
-    openDrawer("tab-vault");
-  });
+  connNameInput.value = p.name;
+  connBaseUrlInput.value = p.url;
+  connPortalHint.innerHTML = `
+    <span>${p.hint}</span> 
+    ${p.portal ? `<a href="#" class="direct-link" data-url="${p.portal}" style="margin-right: 6px;">🔗 رابط استخراج المفتاح</a>` : ""}
+  `;
 
-  // Drawer Open / Close
-  openDrawerBtn.addEventListener("click", () => openDrawer("tab-vault"));
-  closeDrawerBtn.addEventListener("click", closeDrawer);
-  drawerOverlay.addEventListener("click", (e) => {
-    if (e.target === drawerOverlay) closeDrawer();
-  });
-
-  // Drawer Tabs
-  const tabBtns = document.querySelectorAll(".drawer-tabs-nav .tab-btn");
-  tabBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      tabBtns.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      const targetTab = btn.getAttribute("data-tab");
-      document.querySelectorAll(".tab-content-panel").forEach(p => p.classList.remove("active"));
-      const panel = document.getElementById(targetTab);
-      if (panel) panel.classList.add("active");
-    });
-  });
-
-  // Direct External Links
-  document.querySelectorAll(".direct-link").forEach(link => {
+  // Attach direct link click handler
+  const link = connPortalHint.querySelector(".direct-link");
+  if (link) {
     link.addEventListener("click", (e) => {
       e.preventDefault();
       const url = link.getAttribute("data-url");
@@ -296,255 +475,126 @@ function setupEventListeners() {
         window.open(url, "_blank");
       }
     });
-  });
-
-  // Key Verify Buttons
-  document.querySelectorAll(".btn-verify").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const prov = btn.getAttribute("data-provider");
-      const input = document.getElementById(`key-${prov}`);
-      const statusText = document.getElementById(`status-${prov}`);
-      if (!input || !prov) return;
-
-      const keyVal = input.value.trim();
-      if (!keyVal) {
-        statusText.textContent = "الرجاء إدخال المفتاح أولاً";
-        statusText.style.color = "var(--accent-red)";
-        return;
-      }
-
-      btn.disabled = true;
-      btn.textContent = "جاري الفحص...";
-      statusText.textContent = "يتم الاتصال بنقطة النهاية...";
-      statusText.style.color = "var(--accent-blue)";
-
-      try {
-        if (invoke) {
-          const models = await invoke("verify_provider_models", { provider: prov, apiKey: keyVal });
-          providerKeys[prov] = keyVal;
-          statusText.textContent = `✓ تم التحقق بنجاح (${models.length} نموذج متاح)`;
-          statusText.style.color = "var(--accent-green)";
-          btn.textContent = "✓ Verified";
-          await loadVaultAndModels();
-        } else {
-          statusText.textContent = "✓ مفتاح صالح (محاكاة)";
-          statusText.style.color = "var(--accent-green)";
-          btn.textContent = "✓ Verified";
-        }
-      } catch (err) {
-        statusText.textContent = `✕ فشل التحقق: ${err}`;
-        statusText.style.color = "var(--accent-red)";
-        btn.textContent = "Verify & Fetch";
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
-
-  // Textarea auto-resize & input triggers
-  promptInput.addEventListener("input", handlePromptInput);
-
-  // Send on enter or click
-  sendBtn.addEventListener("click", handleSend);
-  promptInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  });
-
-  // Quick tag pills in prompt
-  document.querySelectorAll(".tag-pill").forEach(tag => {
-    tag.addEventListener("click", () => {
-      const insert = tag.getAttribute("data-insert");
-      promptInput.value = insert + " ";
-      promptInput.focus();
-    });
-  });
-
-  // MCP Hub UI buttons
-  const openAddMcpBtn = document.getElementById("openAddMcpBtn");
-  if (openAddMcpBtn) {
-    openAddMcpBtn.addEventListener("click", () => addMcpModal.classList.remove("hidden"));
-  }
-  const closeAddMcpModal = document.getElementById("closeAddMcpModal");
-  if (closeAddMcpModal) {
-    closeAddMcpModal.addEventListener("click", () => addMcpModal.classList.add("hidden"));
-  }
-  const saveNewMcpBtn = document.getElementById("saveNewMcpBtn");
-  if (saveNewMcpBtn) {
-    saveNewMcpBtn.addEventListener("click", handleSaveNewMcp);
-  }
-  const editRawMcpBtn = document.getElementById("editRawMcpBtn");
-  if (editRawMcpBtn) {
-    editRawMcpBtn.addEventListener("click", handleToggleRawMcp);
-  }
-  const saveRawMcpBtn = document.getElementById("saveRawMcpBtn");
-  if (saveRawMcpBtn) {
-    saveRawMcpBtn.addEventListener("click", handleSaveRawMcpJson);
   }
 
-  // Skills Hub UI buttons
-  const openAddSkillBtn = document.getElementById("openAddSkillBtn");
-  if (openAddSkillBtn) {
-    openAddSkillBtn.addEventListener("click", () => addSkillModal.classList.remove("hidden"));
-  }
-  const closeAddSkillModal = document.getElementById("closeAddSkillModal");
-  if (closeAddSkillModal) {
-    closeAddSkillModal.addEventListener("click", () => addSkillModal.classList.add("hidden"));
-  }
-  const saveNewSkillBtn = document.getElementById("saveNewSkillBtn");
-  if (saveNewSkillBtn) {
-    saveNewSkillBtn.addEventListener("click", handleSaveNewSkill);
-  }
-
-  // Tauri Streaming Events Listener
-  if (listen) {
-    listen("agent-stream-event", handleStreamEvent);
-  }
+  // Pre-fill default models in checklist
+  renderDiscoveredChecklist(p.defaultModels, [p.defaultModels[0]]);
 }
 
-// --- KEYBOARD SHORTCUTS ---
-function setupKeyboardShortcuts() {
-  document.addEventListener("keydown", (e) => {
-    // Ctrl + K: Toggle Model Picker
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      modelDropdownMenu.classList.toggle("hidden");
-    }
-
-    // Ctrl + ,: Toggle Drawer Settings
-    if ((e.ctrlKey || e.metaKey) && e.key === ",") {
-      e.preventDefault();
-      if (drawerOverlay.classList.contains("hidden")) {
-        openDrawer("tab-vault");
-      } else {
-        closeDrawer();
-      }
-    }
-
-    // Alt + A: Accept Diff
-    if (e.altKey && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      if (latestDiffCard && latestDiffCard.acceptBtn) {
-        latestDiffCard.acceptBtn.click();
-      }
-    }
-
-    // Alt + R: Reject Diff
-    if (e.altKey && e.key.toLowerCase() === "r") {
-      e.preventDefault();
-      if (latestDiffCard && latestDiffCard.rejectBtn) {
-        latestDiffCard.rejectBtn.click();
-      }
-    }
-
-    // Escape: Close all overlays
-    if (e.key === "Escape") {
-      modelDropdownMenu.classList.add("hidden");
-      autocompletePopup.classList.add("hidden");
-      addMcpModal.classList.add("hidden");
-      addSkillModal.classList.add("hidden");
-      closeDrawer();
-    }
+function renderDiscoveredChecklist(models, pinned = []) {
+  discoveredModelsList.innerHTML = "";
+  models.forEach(m => {
+    const item = document.createElement("div");
+    item.className = "discovered-model-item";
+    const isChecked = pinned.includes(m);
+    item.innerHTML = `
+      <input type="checkbox" value="${escapeHtml(m)}" ${isChecked ? "checked" : ""}>
+      <span>${escapeHtml(m)}</span>
+    `;
+    discoveredModelsList.appendChild(item);
   });
 }
 
-// --- DRAWER OPEN / CLOSE ---
-function openDrawer(tabId = "tab-vault") {
-  drawerOverlay.classList.remove("hidden");
-  const tabBtn = document.querySelector(`.drawer-tabs-nav .tab-btn[data-tab="${tabId}"]`);
-  if (tabBtn) tabBtn.click();
-}
+// Fetch models via native backend
+async function handleFetchModels() {
+  const baseUrl = connBaseUrlInput.value.trim();
+  const apiKey = connKeyInput.value.trim();
 
-function closeDrawer() {
-  drawerOverlay.classList.add("hidden");
-}
-
-// --- AUTOCOMPLETE POPUP FOR / AND @ ---
-function handlePromptInput() {
-  // Auto-resize
-  promptInput.style.height = "auto";
-  promptInput.style.height = Math.min(promptInput.scrollHeight, 160) + "px";
-
-  const val = promptInput.value;
-  if (val.startsWith("/")) {
-    showSlashMenu(val);
-  } else if (val.includes("@")) {
-    showAtMenu(val);
-  } else {
-    autocompletePopup.classList.add("hidden");
-  }
-}
-
-function showSlashMenu(val) {
-  popupHeader.textContent = "المهارات والأوامر السريعة (Slash Commands)";
-  popupList.innerHTML = "";
-
-  const slashOptions = [
-    { cmd: "/skills", desc: "فتح درج إدارة المهارات والأتمتة" },
-    { cmd: "/review", desc: "فحص أمان الكود والتكامل عبر LOCUS AST" },
-    { cmd: "/automate", desc: "أتمتة أوامر البناء والنشر في المشروع" },
-    { cmd: "/rea", desc: "فحص وتحليل الثنائيات والبروتوكولات (Reverse Engineering)" },
-    { cmd: "/locus", desc: "ضغط سياق الملفات وتوليد AST Skeleton (-86%)" },
-    { cmd: "/clear", desc: "مسح التدفق الخطي الحالي والبدء من جديد" }
-  ];
-
-  const filtered = slashOptions.filter(o => o.cmd.startsWith(val.trim()));
-  if (filtered.length === 0) {
-    autocompletePopup.classList.add("hidden");
+  if (!baseUrl) {
+    discoveryStatus.textContent = "الرجاء إدخال رابط Base URL أولاً";
+    discoveryStatus.style.color = "var(--accent-red)";
     return;
   }
 
-  filtered.forEach(opt => {
-    const item = document.createElement("div");
-    item.className = "popup-item";
-    item.innerHTML = `
-      <div class="popup-item-left">
-        <span class="popup-item-cmd">${opt.cmd}</span>
-      </div>
-      <span class="popup-item-desc">${opt.desc}</span>
-    `;
-    item.addEventListener("click", () => {
-      promptInput.value = opt.cmd + " ";
-      autocompletePopup.classList.add("hidden");
-      promptInput.focus();
-    });
-    popupList.appendChild(item);
-  });
+  fetchModelsBtn.disabled = true;
+  fetchModelsBtn.textContent = "جاري الجلب...";
+  discoveryStatus.textContent = "يتم الاتصال بـ /models...";
+  discoveryStatus.style.color = "var(--accent-blue)";
 
-  autocompletePopup.classList.remove("hidden");
+  try {
+    let models = [];
+    if (invoke) {
+      models = await invoke("fetch_connection_models", { baseUrl, apiKey });
+    } else {
+      models = ["model-mock-1", "model-mock-2", "model-mock-3"];
+    }
+
+    if (models.length === 0) {
+      discoveryStatus.textContent = "تم الاتصال ولكن لم يتم العثور على نماذج.";
+      discoveryStatus.style.color = "var(--accent-amber)";
+    } else {
+      discoveryStatus.textContent = `✓ تم اكتشاف ${models.length} نموذج بنجاح!`;
+      discoveryStatus.style.color = "var(--accent-green)";
+
+      // Select previously checked or first 2
+      const existingChecked = Array.from(discoveredModelsList.querySelectorAll("input:checked")).map(i => i.value);
+      const defaultPins = existingChecked.length > 0 ? existingChecked : models.slice(0, 2);
+      renderDiscoveredChecklist(models, defaultPins);
+    }
+  } catch (err) {
+    discoveryStatus.textContent = `✕ تعذر الجلب التلقائي: ${err}`;
+    discoveryStatus.style.color = "var(--accent-red)";
+  } finally {
+    fetchModelsBtn.disabled = false;
+    fetchModelsBtn.textContent = "Fetch Models 🔄";
+  }
 }
 
-function showAtMenu(val) {
-  popupHeader.textContent = "سياق خوادم الـ MCP وملفات المشروع";
-  popupList.innerHTML = "";
+// Add manual model
+function handleAddManualModel() {
+  const m = manualModelInput.value.trim();
+  if (!m) return;
 
-  const atOptions = [
-    { target: "@mcp:rea", desc: "استدعاء خادم الهندسة العكسية وفحص الباينري" },
-    { target: "@mcp:web_search", desc: "البحث الحي عبر الإنترنت وقراءة الروابط" },
-    { target: "@mcp:system_automation", desc: "تنفيذ مهام النظام وإدارة الملفات" },
-    { target: "@locus:ast", desc: "سحب شجرة الـ AST للملف الحالي" }
-  ];
-
-  atOptions.forEach(opt => {
+  const existingInputs = Array.from(discoveredModelsList.querySelectorAll("input")).map(i => i.value);
+  if (!existingInputs.includes(m)) {
     const item = document.createElement("div");
-    item.className = "popup-item";
+    item.className = "discovered-model-item";
     item.innerHTML = `
-      <div class="popup-item-left">
-        <span class="popup-item-cmd">${opt.target}</span>
-      </div>
-      <span class="popup-item-desc">${opt.desc}</span>
+      <input type="checkbox" value="${escapeHtml(m)}" checked>
+      <span>${escapeHtml(m)}</span>
     `;
-    item.addEventListener("click", () => {
-      promptInput.value = opt.target + " ";
-      autocompletePopup.classList.add("hidden");
-      promptInput.focus();
-    });
-    popupList.appendChild(item);
-  });
+    discoveredModelsList.insertBefore(item, discoveredModelsList.firstChild);
+  }
+  manualModelInput.value = "";
+}
 
-  autocompletePopup.classList.remove("hidden");
+// Save connection
+async function handleSaveConnection() {
+  const name = connNameInput.value.trim();
+  const baseUrl = connBaseUrlInput.value.trim();
+  const apiKey = connKeyInput.value.trim();
+  const existingId = connModalId.value;
+
+  if (!name || !baseUrl) {
+    alert("الرجاء إدخال اسم الاتصال ورابط Base URL");
+    return;
+  }
+
+  // Gather selected pinned models & all discovered
+  const allCheckboxes = Array.from(discoveredModelsList.querySelectorAll("input[type='checkbox']"));
+  const pinned_models = allCheckboxes.filter(c => c.checked).map(c => c.value);
+  const all_models = allCheckboxes.map(c => c.value);
+
+  const connectionObj = {
+    id: existingId || `conn_${Date.now()}`,
+    name,
+    base_url: baseUrl,
+    api_key: apiKey,
+    enabled: true,
+    pinned_models,
+    all_models
+  };
+
+  if (invoke) {
+    apiConnections = await invoke("save_api_connection", { connection: connectionObj });
+  } else {
+    const idx = apiConnections.findIndex(c => c.id === connectionObj.id);
+    if (idx >= 0) apiConnections[idx] = connectionObj;
+    else apiConnections.push(connectionObj);
+  }
+
+  connectionModal.classList.add("hidden");
+  loadConnections();
 }
 
 // --- SEND & STREAM EXECUTION ---
@@ -556,27 +606,22 @@ async function handleSend() {
   promptInput.value = "";
   promptInput.style.height = "auto";
 
-  // Hide welcome banner if visible
   if (welcomeBanner) welcomeBanner.style.display = "none";
 
-  // Clear command
   if (text === "/clear") {
     streamMessages.innerHTML = "";
     conversationHistory.length = 1;
     return;
   }
 
-  // Skills command shortcut
   if (text === "/skills") {
     openDrawer("tab-skills");
     return;
   }
 
-  // Append user bubble
   appendUserMessage(text);
   conversationHistory.push({ role: "user", content: text });
 
-  // Assistant turn container
   const assistantTurn = createAssistantTurn();
   streamMessages.appendChild(assistantTurn.container);
   scrollStreamToBottom();
@@ -584,14 +629,17 @@ async function handleSend() {
   isStreaming = true;
   sendBtn.disabled = true;
 
-  const currentProvider = PROVIDERS[activeProviderId] || PROVIDERS.groq;
-  const currentKey = providerKeys[activeProviderId];
+  const currentConn = apiConnections.find(c => c.id === activeConnectionId);
 
-  // If we have an active key, perform Native AI Chat Request directly
-  if (currentKey && invoke) {
+  // If active connection and key are present, send via universal native request
+  if (currentConn && currentConn.api_key.trim() && invoke) {
     try {
-      // Emit initial tool start representation
-      appendToolPill(assistantTurn.container, "Provider Router", `Connecting to ${currentProvider.name}...`);
+      appendToolPill(assistantTurn.container, "Universal Router", `Connecting to ${currentConn.name} (${activeModelId})...`);
+
+      const cleanBase = currentConn.base_url.trim().trim_end_matches('/');
+      const endpoint = cleanBase.endsWith("/chat/completions") 
+        ? cleanBase 
+        : `${cleanBase}/chat/completions`;
 
       const payload = {
         model: activeModelId,
@@ -601,36 +649,35 @@ async function handleSend() {
       };
 
       const rawResponse = await invoke("send_ai_chat_request", {
-        endpoint: currentProvider.url,
-        apiKey: currentKey,
+        endpoint,
+        apiKey: currentConn.api_key,
         payloadJson: JSON.stringify(payload)
       });
 
       const parsed = JSON.parse(rawResponse);
-      const answer = parsed.choices?.[0]?.message?.content || "✓ لا يوجد رد من النموذج.";
+      const answer = parsed.choices?.[0]?.message?.content || "✓ تم استلام الرد بنجاح.";
       
       assistantTurn.textBlock.innerHTML = renderMarkdown(answer);
       conversationHistory.push({ role: "assistant", content: answer });
 
-      // If user query mentions refactoring or modifying code, render interactive diff card
+      // Diff card test trigger
       if (text.includes("refactor") || text.includes("عدل") || text.includes("patch") || text.includes("fix")) {
-        renderInteractiveDiffCard(assistantTurn.container, "packages/core/src/tool/plugin/read.ts", [
-          { type: "del", text: "- const content = fs.readFileSync(path, 'utf8');" },
-          { type: "add", text: "+ const skeleton = yield* locus.skeleton(path);" },
+        renderInteractiveDiffCard(assistantTurn.container, "src/main.rs", [
+          { type: "del", text: "- let status = check_legacy_runtime();" },
+          { type: "add", text: "+ let status = check_universal_router();" },
           { type: "add", text: "+ // LOCUS AST zero-blind compression enforced" },
-          { type: "add", text: "+ return skeleton;" }
+          { type: "add", text: "+ return status;" }
         ]);
       }
 
     } catch (err) {
-      assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">خطأ في الاتصال بالمزود: ${err}</span>`;
+      assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">خطأ في الاتصال بنقطة النهاية: ${err}</span>`;
     } finally {
       isStreaming = false;
       sendBtn.disabled = false;
       scrollStreamToBottom();
     }
   } else if (invoke) {
-    // Fallback to local sovereign session turn
     try {
       await invoke("execute_session_turn", { prompt: text, cwd: "." });
     } catch (err) {
@@ -641,10 +688,9 @@ async function handleSend() {
       scrollStreamToBottom();
     }
   } else {
-    // Browser mock fallback
     setTimeout(() => {
       assistantTurn.textBlock.innerHTML = renderMarkdown(
-        `أهلاً بك في **OpenCode Sovereign**! 👋\n\nلقد اخترت نموذج: \`${activeModelName}\` عبر **${currentProvider.name}**.\n\nلتفعيل الردود الحية فائقة السرعة، يرجى إدخال مفتاح API المجاني عبر مركز القيادة ⚙️ بالأعلى.`
+        `أهلاً بك في **OpenCode Sovereign**! 👋\n\nأضف اتصالك الأول عبر **[+ Add API Connection]** في مركز القيادة ⚙️ للاتصال الحي بأي نموذج في العالم.`
       );
       isStreaming = false;
       sendBtn.disabled = false;
@@ -657,9 +703,7 @@ async function handleSend() {
 function appendUserMessage(text) {
   const turn = document.createElement("div");
   turn.className = "turn-user";
-  turn.innerHTML = `
-    <div class="user-bubble">${escapeHtml(text)}</div>
-  `;
+  turn.innerHTML = `<div class="user-bubble">${escapeHtml(text)}</div>`;
   streamMessages.appendChild(turn);
 }
 
@@ -674,7 +718,6 @@ function createAssistantTurn() {
   return { container, textBlock };
 }
 
-// LOCUS Collapsible Slice Pill
 function appendLocusSlice(container, file, symbol, skeletonContent) {
   const card = document.createElement("div");
   card.className = "locus-slice-card";
@@ -699,7 +742,6 @@ function appendLocusSlice(container, file, symbol, skeletonContent) {
   container.appendChild(card);
 }
 
-// MCP / Tool Calling Pill
 function appendToolPill(container, name, input) {
   const pill = document.createElement("div");
   pill.className = "tool-call-pill";
@@ -711,7 +753,6 @@ function appendToolPill(container, name, input) {
   return pill;
 }
 
-// Interactive Diff Card with Accept / Reject
 function renderInteractiveDiffCard(container, path, lines) {
   const addCount = lines.filter(l => l.type === "add").length;
   const delCount = lines.filter(l => l.type === "del").length;
@@ -820,13 +861,13 @@ function handleStreamEvent(event) {
   }
 }
 
-// --- MCP MANAGEMENT (TAB 2) ---
+// --- MCP CONFIG (TAB 2) ---
 async function loadMcpConfig() {
   if (invoke) {
     try {
       mcpServers = await invoke("get_mcp_config");
     } catch (e) {
-      console.warn("Failed to load MCP config:", e);
+      console.warn("Failed to load MCP:", e);
     }
   }
   renderMcpList();
@@ -870,65 +911,7 @@ function renderMcpList() {
   });
 }
 
-async function handleSaveNewMcp() {
-  const id = document.getElementById("newMcpId").value.trim();
-  const name = document.getElementById("newMcpName").value.trim();
-  const command = document.getElementById("newMcpCommand").value.trim();
-  const args = document.getElementById("newMcpArgs").value.split(",").map(a => a.trim()).filter(Boolean);
-  const desc = document.getElementById("newMcpDesc").value.trim();
-
-  if (!id || !name || !command) return;
-
-  const newSrv = {
-    id,
-    name,
-    command,
-    args,
-    env: {},
-    enabled: true,
-    description: desc || "Custom MCP Protocol server",
-    tools: ["custom_tool"]
-  };
-
-  mcpServers.push(newSrv);
-  if (invoke) {
-    await invoke("save_mcp_config", { servers: mcpServers });
-  }
-
-  addMcpModal.classList.add("hidden");
-  renderMcpList();
-}
-
-async function handleToggleRawMcp() {
-  const rawContainer = document.getElementById("rawMcpContainer");
-  const rawTextarea = document.getElementById("rawMcpTextarea");
-  rawContainer.classList.toggle("hidden");
-
-  if (!rawContainer.classList.contains("hidden")) {
-    if (invoke) {
-      rawTextarea.value = await invoke("get_raw_mcp_json");
-    } else {
-      rawTextarea.value = JSON.stringify(mcpServers, null, 2);
-    }
-  }
-}
-
-async function handleSaveRawMcpJson() {
-  const rawTextarea = document.getElementById("rawMcpTextarea");
-  try {
-    const parsed = JSON.parse(rawTextarea.value);
-    mcpServers = parsed;
-    if (invoke) {
-      await invoke("save_raw_mcp_json", { rawJson: rawTextarea.value });
-    }
-    document.getElementById("rawMcpContainer").classList.add("hidden");
-    renderMcpList();
-  } catch (e) {
-    alert("تنسيق JSON غير صالح: " + e.message);
-  }
-}
-
-// --- SKILLS MANAGEMENT (TAB 3) ---
+// --- SKILLS CONFIG (TAB 3) ---
 async function loadSkillsConfig() {
   if (invoke) {
     try {
@@ -955,7 +938,7 @@ function renderSkillsList() {
           <span class="skill-category-badge">${escapeHtml(skill.category)}</span>
           <span class="skill-slash-tag">${escapeHtml(skill.slash_command)}</span>
         </div>
-        <label class="toggle-switch" title="نشط دائماً في السياق">
+        <label class="toggle-switch" title="نشط دائماً">
           <input type="checkbox" ${skill.always_on ? "checked" : ""}>
           <span class="toggle-slider"></span>
         </label>
@@ -979,36 +962,240 @@ function renderSkillsList() {
   });
 }
 
-async function handleSaveNewSkill() {
-  const name = document.getElementById("newSkillName").value.trim();
-  const slash = document.getElementById("newSkillSlash").value.trim();
-  const category = document.getElementById("newSkillCategory").value.trim();
-  const desc = document.getElementById("newSkillDesc").value.trim();
-  const prompt = document.getElementById("newSkillPrompt").value.trim();
+// --- EVENT LISTENERS ---
+function setupEventListeners() {
+  // Model Dropdown
+  activeModelPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    modelDropdownMenu.classList.toggle("hidden");
+  });
 
-  if (!name || !slash) return;
+  document.addEventListener("click", (e) => {
+    if (!modelDropdownMenu.contains(e.target) && !activeModelPill.contains(e.target)) {
+      modelDropdownMenu.classList.add("hidden");
+    }
+  });
 
-  const newSkill = {
-    id: slash.replace("/", "").toLowerCase(),
-    name,
-    category: category || "Custom",
-    description: desc,
-    prompt,
-    allowed_tools: ["locus_slice", "terminal"],
-    always_on: false,
-    slash_command: slash.startsWith("/") ? slash : `/${slash}`
-  };
+  openVaultFromDropdown.addEventListener("click", () => {
+    modelDropdownMenu.classList.add("hidden");
+    openDrawer("tab-vault");
+  });
 
-  skillsList.push(newSkill);
-  if (invoke) {
-    await invoke("save_skills_config", { skills: skillsList });
+  // Drawer
+  openDrawerBtn.addEventListener("click", () => openDrawer("tab-vault"));
+  closeDrawerBtn.addEventListener("click", closeDrawer);
+  drawerOverlay.addEventListener("click", (e) => {
+    if (e.target === drawerOverlay) closeDrawer();
+  });
+
+  // Drawer Tabs
+  document.querySelectorAll(".drawer-tabs-nav .tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".drawer-tabs-nav .tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const targetTab = btn.getAttribute("data-tab");
+      document.querySelectorAll(".tab-content-panel").forEach(p => p.classList.remove("active"));
+      const panel = document.getElementById(targetTab);
+      if (panel) panel.classList.add("active");
+    });
+  });
+
+  // Add Connection Buttons
+  if (openAddConnectionBtn) openAddConnectionBtn.addEventListener("click", openAddConnectionModal);
+  if (emptyAddConnBtn) emptyAddConnBtn.addEventListener("click", openAddConnectionModal);
+  if (closeConnectionModal) closeConnectionModal.addEventListener("click", () => connectionModal.classList.add("hidden"));
+
+  // Presets in modal
+  document.querySelectorAll(".preset-pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      const presetKey = pill.getAttribute("data-preset");
+      applyPreset(presetKey);
+    });
+  });
+
+  // Key Visibility Toggle
+  if (toggleKeyVisibility) {
+    toggleKeyVisibility.addEventListener("click", () => {
+      if (connKeyInput.type === "password") {
+        connKeyInput.type = "text";
+        toggleKeyVisibility.textContent = "🙈";
+      } else {
+        connKeyInput.type = "password";
+        toggleKeyVisibility.textContent = "👁️";
+      }
+    });
   }
 
-  addSkillModal.classList.add("hidden");
-  renderSkillsList();
+  // Model discovery in modal
+  if (fetchModelsBtn) fetchModelsBtn.addEventListener("click", handleFetchModels);
+  if (addManualModelBtn) addManualModelBtn.addEventListener("click", handleAddManualModel);
+  if (saveConnectionBtn) saveConnectionBtn.addEventListener("click", handleSaveConnection);
+
+  // Input Box & Send
+  promptInput.addEventListener("input", handlePromptInput);
+  sendBtn.addEventListener("click", handleSend);
+  promptInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  });
+
+  // Tag pills
+  document.querySelectorAll(".tag-pill").forEach(tag => {
+    tag.addEventListener("click", () => {
+      promptInput.value = tag.getAttribute("data-insert") + " ";
+      promptInput.focus();
+    });
+  });
+
+  // MCP Hub buttons
+  const openAddMcpBtn = document.getElementById("openAddMcpBtn");
+  if (openAddMcpBtn) openAddMcpBtn.addEventListener("click", () => addMcpModal.classList.remove("hidden"));
+  const closeAddMcpModal = document.getElementById("closeAddMcpModal");
+  if (closeAddMcpModal) closeAddMcpModal.addEventListener("click", () => addMcpModal.classList.add("hidden"));
+
+  // Skills Hub buttons
+  const openAddSkillBtn = document.getElementById("openAddSkillBtn");
+  if (openAddSkillBtn) openAddSkillBtn.addEventListener("click", () => addSkillModal.classList.remove("hidden"));
+  const closeAddSkillModal = document.getElementById("closeAddSkillModal");
+  if (closeAddSkillModal) closeAddSkillModal.addEventListener("click", () => addSkillModal.classList.add("hidden"));
+
+  // Tauri Streaming Events
+  if (listen) {
+    listen("agent-stream-event", handleStreamEvent);
+  }
 }
 
-// --- LOCUS STATUS PULSE ---
+// --- KEYBOARD SHORTCUTS ---
+function setupKeyboardShortcuts() {
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      modelDropdownMenu.classList.toggle("hidden");
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+      e.preventDefault();
+      if (drawerOverlay.classList.contains("hidden")) {
+        openDrawer("tab-vault");
+      } else {
+        closeDrawer();
+      }
+    }
+
+    if (e.altKey && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      if (latestDiffCard?.acceptBtn) latestDiffCard.acceptBtn.click();
+    }
+
+    if (e.altKey && e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      if (latestDiffCard?.rejectBtn) latestDiffCard.rejectBtn.click();
+    }
+
+    if (e.key === "Escape") {
+      modelDropdownMenu.classList.add("hidden");
+      autocompletePopup.classList.add("hidden");
+      connectionModal.classList.add("hidden");
+      addMcpModal.classList.add("hidden");
+      addSkillModal.classList.add("hidden");
+      closeDrawer();
+    }
+  });
+}
+
+function openDrawer(tabId = "tab-vault") {
+  drawerOverlay.classList.remove("hidden");
+  const tabBtn = document.querySelector(`.drawer-tabs-nav .tab-btn[data-tab="${tabId}"]`);
+  if (tabBtn) tabBtn.click();
+}
+
+function closeDrawer() {
+  drawerOverlay.classList.add("hidden");
+}
+
+// --- AUTOCOMPLETE POPUP ---
+function handlePromptInput() {
+  promptInput.style.height = "auto";
+  promptInput.style.height = Math.min(promptInput.scrollHeight, 160) + "px";
+
+  const val = promptInput.value;
+  if (val.startsWith("/")) {
+    showSlashMenu(val);
+  } else if (val.includes("@")) {
+    showAtMenu(val);
+  } else {
+    autocompletePopup.classList.add("hidden");
+  }
+}
+
+function showSlashMenu(val) {
+  popupHeader.textContent = "المهارات والأوامر السريعة (Slash Commands)";
+  popupList.innerHTML = "";
+
+  const slashOptions = [
+    { cmd: "/skills", desc: "فتح درج إدارة المهارات والأتمتة" },
+    { cmd: "/review", desc: "فحص أمان الكود والتكامل عبر LOCUS AST" },
+    { cmd: "/automate", desc: "أتمتة أوامر البناء والنشر في المشروع" },
+    { cmd: "/rea", desc: "فحص وتحليل الثنائيات والبروتوكولات (Reverse Engineering)" },
+    { cmd: "/locus", desc: "ضغط سياق الملفات وتوليد AST Skeleton (-86%)" },
+    { cmd: "/clear", desc: "مسح التدفق الخطي الحالي والبدء من جديد" }
+  ];
+
+  const filtered = slashOptions.filter(o => o.cmd.startsWith(val.trim()));
+  if (filtered.length === 0) {
+    autocompletePopup.classList.add("hidden");
+    return;
+  }
+
+  filtered.forEach(opt => {
+    const item = document.createElement("div");
+    item.className = "popup-item";
+    item.innerHTML = `
+      <div class="popup-item-left"><span class="popup-item-cmd">${opt.cmd}</span></div>
+      <span class="popup-item-desc">${opt.desc}</span>
+    `;
+    item.addEventListener("click", () => {
+      promptInput.value = opt.cmd + " ";
+      autocompletePopup.classList.add("hidden");
+      promptInput.focus();
+    });
+    popupList.appendChild(item);
+  });
+
+  autocompletePopup.classList.remove("hidden");
+}
+
+function showAtMenu(val) {
+  popupHeader.textContent = "سياق خوادم الـ MCP وملفات المشروع";
+  popupList.innerHTML = "";
+
+  const atOptions = [
+    { target: "@mcp:rea", desc: "استدعاء خادم الهندسة العكسية وفحص الباينري" },
+    { target: "@mcp:web_search", desc: "البحث الحي عبر الإنترنت وقراءة الروابط" },
+    { target: "@mcp:system_automation", desc: "تنفيذ مهام النظام وإدارة الملفات" },
+    { target: "@locus:ast", desc: "سحب شجرة الـ AST للملف الحالي" }
+  ];
+
+  atOptions.forEach(opt => {
+    const item = document.createElement("div");
+    item.className = "popup-item";
+    item.innerHTML = `
+      <div class="popup-item-left"><span class="popup-item-cmd">${opt.target}</span></div>
+      <span class="popup-item-desc">${opt.desc}</span>
+    `;
+    item.addEventListener("click", () => {
+      promptInput.value = opt.target + " ";
+      autocompletePopup.classList.add("hidden");
+      promptInput.focus();
+    });
+    popupList.appendChild(item);
+  });
+
+  autocompletePopup.classList.remove("hidden");
+}
+
 async function checkLocusPulse() {
   if (invoke) {
     try {
@@ -1018,12 +1205,11 @@ async function checkLocusPulse() {
         locusBadge.title = `LOCUS ${status.version} Online (${status.path})`;
       }
     } catch (e) {
-      console.warn("LOCUS status query:", e);
+      console.warn("LOCUS check:", e);
     }
   }
 }
 
-// --- UTILITIES ---
 function scrollStreamToBottom() {
   streamViewport.scrollTop = streamViewport.scrollHeight;
 }
@@ -1041,7 +1227,6 @@ function escapeHtml(str) {
 function renderMarkdown(md) {
   if (!md) return "";
 
-  // Extract and stash code blocks to protect them from paragraph processing
   const codeBlocks = [];
   let processed = md.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (match, lang, code) => {
     const idx = codeBlocks.length;
@@ -1049,24 +1234,16 @@ function renderMarkdown(md) {
     return `__CODE_BLOCK_${idx}__`;
   });
 
-  // Escape remaining markdown text
   processed = escapeHtml(processed);
 
-  // Restore code block placeholders
   codeBlocks.forEach((block, idx) => {
     processed = processed.replace(`__CODE_BLOCK_${idx}__`, block);
   });
 
-  // Inline code: `code`
   processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Bold: **text**
   processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-  // Italic: *text*
   processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
-  // Paragraphs
   processed = processed.split(/\n\n+/).map(p => {
     if (p.includes('<pre><code')) return p;
     return `<p>${p.replace(/\n/g, '<br>')}</p>`;

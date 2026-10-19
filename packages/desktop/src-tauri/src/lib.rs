@@ -57,6 +57,17 @@ pub struct SkillConfig {
     pub slash_command: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ApiConnection {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub enabled: bool,
+    pub pinned_models: Vec<String>,
+    pub all_models: Vec<String>,
+}
+
 fn get_opencode_home() -> PathBuf {
     #[cfg(target_os = "android")]
     {
@@ -1113,6 +1124,233 @@ fn apply_diff_action(path: String, code: String, accept: bool) -> Result<String,
     }
 }
 
+fn get_connections_file() -> PathBuf {
+    get_opencode_home().join("api_connections.json")
+}
+
+fn load_connections() -> Vec<ApiConnection> {
+    let file = get_connections_file();
+    if let Ok(bytes) = fs::read_to_string(&file) {
+        if let Ok(conns) = serde_json::from_str::<Vec<ApiConnection>>(&bytes) {
+            return conns;
+        }
+    }
+    // Seamless automatic migration from secure_vault if available
+    let vault = load_vault();
+    let mut conns = Vec::new();
+    if let Some(key) = vault.get("groq") {
+        if !key.trim().is_empty() {
+            conns.push(ApiConnection {
+                id: "conn_groq".into(),
+                name: "Groq Cloud".into(),
+                base_url: "https://api.groq.com/openai/v1".into(),
+                api_key: key.trim().to_string(),
+                enabled: true,
+                pinned_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into()],
+                all_models: vec!["llama-3.3-70b-versatile".into(), "llama-3.1-8b-instant".into(), "mixtral-8x7b-32768".into()],
+            });
+        }
+    }
+    if let Some(key) = vault.get("gemini") {
+        if !key.trim().is_empty() {
+            conns.push(ApiConnection {
+                id: "conn_gemini".into(),
+                name: "Google Gemini".into(),
+                base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
+                api_key: key.trim().to_string(),
+                enabled: true,
+                pinned_models: vec!["gemini-1.5-flash".into()],
+                all_models: vec!["gemini-1.5-flash".into(), "gemini-2.0-flash".into(), "gemini-1.5-pro".into()],
+            });
+        }
+    }
+    if let Some(key) = vault.get("nvidia") {
+        if !key.trim().is_empty() {
+            conns.push(ApiConnection {
+                id: "conn_nvidia".into(),
+                name: "NVIDIA NIM".into(),
+                base_url: "https://integrate.api.nvidia.com/v1".into(),
+                api_key: key.trim().to_string(),
+                enabled: true,
+                pinned_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
+                all_models: vec!["meta/llama-3.3-70b-instruct".into(), "deepseek-ai/deepseek-r1".into()],
+            });
+        }
+    }
+    if let Some(key) = vault.get("openrouter") {
+        if !key.trim().is_empty() {
+            conns.push(ApiConnection {
+                id: "conn_openrouter".into(),
+                name: "OpenRouter".into(),
+                base_url: "https://openrouter.ai/api/v1".into(),
+                api_key: key.trim().to_string(),
+                enabled: true,
+                pinned_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into()],
+                all_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into(), "deepseek/deepseek-r1:free".into()],
+            });
+        }
+    }
+    conns
+}
+
+fn save_connections(conns: &[ApiConnection]) -> Result<(), String> {
+    let file = get_connections_file();
+    let json = serde_json::to_string_pretty(conns).map_err(|e| e.to_string())?;
+    fs::write(&file, json).map_err(|e| format!("Failed to save connections: {}", e))
+}
+
+#[tauri::command]
+fn get_api_connections() -> Vec<ApiConnection> {
+    load_connections()
+}
+
+#[tauri::command]
+fn save_api_connection(connection: ApiConnection) -> Result<Vec<ApiConnection>, String> {
+    let mut conns = load_connections();
+    if let Some(idx) = conns.iter().position(|c| c.id == connection.id) {
+        conns[idx] = connection;
+    } else {
+        conns.push(connection);
+    }
+    save_connections(&conns)?;
+    Ok(conns)
+}
+
+#[tauri::command]
+fn delete_api_connection(id: String) -> Result<Vec<ApiConnection>, String> {
+    let mut conns = load_connections();
+    conns.retain(|c| c.id != id);
+    save_connections(&conns)?;
+    Ok(conns)
+}
+
+#[tauri::command]
+fn toggle_api_connection(id: String, enabled: bool) -> Result<Vec<ApiConnection>, String> {
+    let mut conns = load_connections();
+    if let Some(conn) = conns.iter_mut().find(|c| c.id == id) {
+        conn.enabled = enabled;
+    }
+    save_connections(&conns)?;
+    Ok(conns)
+}
+
+#[tauri::command]
+fn toggle_pinned_model(connection_id: String, model_id: String) -> Result<Vec<ApiConnection>, String> {
+    let mut conns = load_connections();
+    if let Some(conn) = conns.iter_mut().find(|c| c.id == connection_id) {
+        if let Some(pos) = conn.pinned_models.iter().position(|m| m == &model_id) {
+            conn.pinned_models.remove(pos);
+        } else {
+            conn.pinned_models.push(model_id);
+        }
+    }
+    save_connections(&conns)?;
+    Ok(conns)
+}
+
+#[tauri::command]
+async fn fetch_connection_models(base_url: String, api_key: String) -> Result<Vec<String>, String> {
+    let clean_key = api_key.trim();
+    let clean_base = base_url.trim().trim_end_matches('/');
+    if clean_base.is_empty() {
+        return Err("Base URL cannot be empty".to_string());
+    }
+
+    let models_url = if clean_base.ends_with("/chat/completions") {
+        format!("{}/models", clean_base.trim_end_matches("/chat/completions"))
+    } else if clean_base.ends_with("/models") {
+        clean_base.to_string()
+    } else {
+        format!("{}/models", clean_base)
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("Client creation failed: {}", e))?;
+
+    let mut req = client.get(&models_url)
+        .header("User-Agent", "OpenCode-Desktop/2.0.32")
+        .header("HTTP-Referer", "https://opencode.ai")
+        .header("X-Title", "OpenCode Sovereign");
+
+    if !clean_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", clean_key));
+    }
+
+    let res = req.send().await.map_err(|e| format!("Failed to connect to '{}': {}", models_url, e))?;
+    let status = res.status();
+    let text = res.text().await.map_err(|e| format!("Failed to read models response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Endpoint '{}' returned HTTP {}: {}", models_url, status, text));
+    }
+
+    let parsed: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse models JSON: {}", e))?;
+
+    let mut models = Vec::new();
+    if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
+        for item in data {
+            if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
+                models.push(id.to_string());
+            }
+        }
+    } else if let Some(items) = parsed.get("models").and_then(|m| m.as_array()) {
+        for item in items {
+            if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+                let id = name.trim_start_matches("models/").to_string();
+                models.push(id);
+            } else if let Some(id) = item.get("id").and_then(|id| id.as_str()) {
+                models.push(id.to_string());
+            }
+        }
+    }
+
+    models.sort();
+    models.dedup();
+    Ok(models)
+}
+
+#[tauri::command]
+async fn send_universal_chat_request(
+    connection_id: String,
+    model: String,
+    messages_json: String,
+    temperature: Option<f32>,
+) -> Result<String, String> {
+    let conns = load_connections();
+    let conn = if !connection_id.trim().is_empty() {
+        conns.iter().find(|c| c.id == connection_id)
+    } else {
+        conns.iter().find(|c| c.pinned_models.contains(&model) || c.all_models.contains(&model))
+    };
+
+    let conn = conn.ok_or_else(|| format!("API Connection not found for model '{}'", model))?;
+    if !conn.enabled {
+        return Err(format!("Connection '{}' is disabled", conn.name));
+    }
+
+    let clean_base = conn.base_url.trim().trim_end_matches('/');
+    let endpoint = if clean_base.ends_with("/chat/completions") {
+        clean_base.to_string()
+    } else {
+        format!("{}/chat/completions", clean_base)
+    };
+
+    let messages: serde_json::Value = serde_json::from_str(&messages_json)
+        .map_err(|e| format!("Invalid messages JSON: {}", e))?;
+
+    let payload = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "temperature": temperature.unwrap_or(0.6),
+        "stream": false
+    });
+
+    send_ai_chat_request(endpoint, conn.api_key.clone(), payload.to_string()).await
+}
+
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -1189,6 +1427,13 @@ pub fn run() {
             list_saved_providers,
             list_available_models,
             verify_provider_models,
+            get_api_connections,
+            save_api_connection,
+            delete_api_connection,
+            toggle_api_connection,
+            toggle_pinned_model,
+            fetch_connection_models,
+            send_universal_chat_request,
             get_mcp_config,
             save_mcp_config,
             toggle_mcp_server,
