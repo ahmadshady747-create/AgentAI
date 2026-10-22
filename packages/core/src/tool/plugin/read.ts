@@ -1,4 +1,4 @@
-export * as ReadTool from "./read.js"
+﻿export * as ReadTool from "./read.js"
 
 import type { Context } from "@opencode/plugin/effect/plugin"
 import { basename, dirname, join } from "path"
@@ -130,7 +130,7 @@ export const Plugin = {
                       }
                     }),
                 ),
-              )
+              ))
               // After a successful read, discover nearby AGENTS.md walking up to the Location
               // root exclusive and inject them as durable synthetic instructions. For a
               // directory listing the walk starts at the directory itself (so its own AGENTS.md
