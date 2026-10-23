@@ -12,35 +12,35 @@ const PRESETS = {
     url: "https://api.groq.com/openai/v1",
     portal: "https://console.groq.com/keys",
     hint: "أسرع معالجة LPU في العالم مع باقة مجانية كريمة تكفي لآلاف الرسائل اليومية.",
-    defaultModels: []
+    defaultModels: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
   },
   gemini: {
     name: "Google Gemini",
     url: "https://generativelanguage.googleapis.com/v1beta/openai",
     portal: "https://aistudio.google.com/app/apikey",
     hint: "نماذج Google Gemini 1.5 & 2.0 مجانية 100% مع نافذة سياق تصل لمليوني توكن.",
-    defaultModels: []
+    defaultModels: ["gemini-1.5-flash", "gemini-2.0-flash"]
   },
   nvidia: {
     name: "NVIDIA NIM",
     url: "https://integrate.api.nvidia.com/v1",
     portal: "https://build.nvidia.com/",
-    hint: "رصيد 1,000 نقطة لتشغيل نماذج DeepSeek R1 و Llama 3.3 المستضافة على إنفيديا.",
-    defaultModels: []
+    hint: "رصيد 1,000 نقطة لتشغيل نماذج Llama 3.2 Vision و Instruct المستضافة على إنفيديا.",
+    defaultModels: ["meta/llama-3.2-11b-vision-instruct", "meta/llama-3.2-90b-vision-instruct"]
   },
   openrouter: {
     name: "OpenRouter",
     url: "https://openrouter.ai/api/v1",
     portal: "https://openrouter.ai/keys",
     hint: "بوابة عالمية موحدة لمئات النماذج المفتوحة والمجانية.",
-    defaultModels: []
+    defaultModels: ["meta-llama/llama-3.3-70b-instruct:free"]
   },
   openai: {
     name: "OpenAI Official",
     url: "https://api.openai.com/v1",
     portal: "https://platform.openai.com/api-keys",
     hint: "الوصول المباشر لنماذج GPT-4o و o3-mini الرسمية.",
-    defaultModels: []
+    defaultModels: ["gpt-4o-mini", "gpt-4o"]
   },
   custom: {
     name: "",
@@ -588,12 +588,16 @@ function applyPreset(presetKey) {
   // Attach direct link and copy handlers
   setupPortalLinkHandlers(connPortalHint);
 
-  // Clear models checklist — NEVER pre-fill default mock models!
-  discoveredModelsList.innerHTML = `
-    <div class="empty-models-notice">
-      <span>لا توجد نماذج مضافة بعد. الصق مفتاح الـ API الأساسي واضغط <b>[Verify & Fetch ⚡]</b> لجلب نماذج حسابك الفعلية، أو اكتب Model ID يدوياً.</span>
-    </div>
-  `;
+  // Pre-fill proven default models for this preset if available
+  if (p.defaultModels && p.defaultModels.length > 0) {
+    renderDiscoveredChecklist(p.defaultModels, p.defaultModels.slice(0, 2));
+  } else {
+    discoveredModelsList.innerHTML = `
+      <div class="empty-models-notice">
+        <span>لا توجد نماذج مضافة بعد. الصق مفتاح الـ API الأساسي واضغط <b>[Verify & Fetch ⚡]</b> لجلب نماذج حسابك الفعلية، أو اكتب Model ID يدوياً.</span>
+      </div>
+    `;
+  }
 }
 
 function renderDiscoveredChecklist(models, pinned = []) {
@@ -699,7 +703,19 @@ function renderValidationFeedback(res) {
 
     if (res.models && res.models.length > 0) {
       const existingChecked = Array.from(discoveredModelsList.querySelectorAll("input:checked")).map(i => i.value);
-      const defaultPins = existingChecked.length > 0 ? existingChecked : res.models.slice(0, 2);
+      let defaultPins = existingChecked;
+      if (defaultPins.length === 0) {
+        // Exclude broken, deprecated or non-chat models (like 01-ai/yi-large, embed, guard, parse)
+        const preferred = res.models.filter(m => 
+          !m.startsWith("01-ai") && 
+          !m.includes("embed") && 
+          !m.includes("guard") && 
+          !m.includes("parse") && 
+          !m.includes("synthetic") &&
+          (m.includes("llama-3.2") || m.includes("llama-3.3") || m.includes("instruct") || m.includes("coder") || m.includes("flash") || m.includes("gpt"))
+        );
+        defaultPins = preferred.length > 0 ? preferred.slice(0, 3) : res.models.slice(0, 2);
+      }
       renderDiscoveredChecklist(res.models, defaultPins);
     } else {
       discoveryStatus.innerHTML += `
