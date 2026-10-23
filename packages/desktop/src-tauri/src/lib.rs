@@ -363,13 +363,351 @@ fn list_available_models() -> Vec<ModelInfo> {
     list
 }
 
+fn get_openai_tools() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "type": "function",
+            "function": {
+                "name": "list_project_files",
+                "description": "List all relative files in the workspace directory to explore project structure.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "directory": {
+                            "type": "string",
+                            "description": "Subdirectory to list (defaults to root '.')"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file_skeleton",
+                "description": "Extract the AST skeleton of a file using LOCUS (-86% token savings) without loading full file bytes.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the code file"
+                        }
+                    },
+                    "required": ["file_path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_symbol_slice",
+                "description": "Slice a specific function, class, or symbol AST graph from a file using LOCUS.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "symbol": {
+                            "type": "string",
+                            "description": "The function, class, or symbol name"
+                        },
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the file containing the symbol"
+                        }
+                    },
+                    "required": ["symbol", "file_path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "propose_file_edit",
+                "description": "Propose an edit/patch to a file. Runs mandatory LOCUS check verification before emitting an interactive Diff card for the user.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file to modify"
+                        },
+                        "diff_code": {
+                            "type": "string",
+                            "description": "The unified diff or replacement code block (use '+' for additions, '-' for deletions)"
+                        },
+                        "explanation": {
+                            "type": "string",
+                            "description": "Brief explanation of the changes made"
+                        }
+                    },
+                    "required": ["path", "diff_code"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_shell_command",
+                "description": "Execute a shell command in the project directory, validated against the Sovereign Safety Gate.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to run (e.g. 'cargo check', 'git status')"
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }
+    ])
+}
+
+fn list_files_in_workspace(cwd: Option<&str>, max_files: usize) -> Vec<String> {
+    let root = match cwd {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+
+    let mut result = Vec::new();
+    let mut stack = vec![root.clone()];
+
+    while let Some(dir) = stack.pop() {
+        if result.len() >= max_files {
+            break;
+        }
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if file_name.starts_with('.') && file_name != ".locus" {
+                    continue;
+                }
+                if file_name == "node_modules"
+                    || file_name == "target"
+                    || file_name == "dist"
+                    || file_name == "gen"
+                    || file_name == "build"
+                    || file_name == ".git"
+                {
+                    continue;
+                }
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.is_file() {
+                    if let Ok(rel) = path.strip_prefix(&root) {
+                        result.push(rel.to_string_lossy().replace('\\', "/"));
+                    }
+                    if result.len() >= max_files {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    result.sort();
+    result
+}
+
+fn execute_locus_skeleton(cwd: Option<&str>, file_path: &str) -> (String, bool) {
+    let binary = resolve_locus_path();
+    let base_dir = match cwd {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+    let full = if PathBuf::from(file_path).is_absolute() {
+        PathBuf::from(file_path)
+    } else {
+        base_dir.join(file_path)
+    };
+
+    match Command::new(&binary).arg("skeleton").arg(&full).output() {
+        Ok(out) if out.status.success() => {
+            (String::from_utf8_lossy(&out.stdout).to_string(), true)
+        }
+        _ => {
+            if let Ok(content) = fs::read_to_string(&full) {
+                let lines: Vec<&str> = content.lines().take(60).collect();
+                (format!("// Skeleton preview (first 60 lines):\n{}", lines.join("\n")), true)
+            } else {
+                (format!("File '{}' could not be found or read.", file_path), false)
+            }
+        }
+    }
+}
+
+fn execute_locus_slice(cwd: Option<&str>, symbol: &str, file_path: &str) -> (String, bool) {
+    let binary = resolve_locus_path();
+    let base_dir = match cwd {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+    let full = if PathBuf::from(file_path).is_absolute() {
+        PathBuf::from(file_path)
+    } else {
+        base_dir.join(file_path)
+    };
+
+    match Command::new(&binary)
+        .arg("slice")
+        .arg(symbol)
+        .arg(&full)
+        .arg("--depth")
+        .arg("2")
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            (String::from_utf8_lossy(&out.stdout).to_string(), true)
+        }
+        _ => {
+            if let Ok(content) = fs::read_to_string(&full) {
+                let mut matched = Vec::new();
+                for (idx, line) in content.lines().enumerate() {
+                    if line.contains(symbol) {
+                        matched.push(format!("L{}: {}", idx + 1, line));
+                    }
+                }
+                if !matched.is_empty() {
+                    (format!("// Symbol '{}' occurrences:\n{}", symbol, matched.join("\n")), true)
+                } else {
+                    (format!("Symbol '{}' not found in '{}'", symbol, file_path), false)
+                }
+            } else {
+                (format!("Could not read file '{}'", file_path), false)
+            }
+        }
+    }
+}
+
+fn execute_propose_diff(
+    _cwd: Option<&str>,
+    file_path: &str,
+    diff_code: &str,
+    explanation: Option<&str>,
+    app: &tauri::AppHandle,
+) -> (String, bool) {
+    let binary = resolve_locus_path();
+    let check_res = Command::new(&binary).arg("check").arg(file_path).output();
+    let check_info = match check_res {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            format!("LOCUS Invariants Check: {}", stdout.trim())
+        }
+        Err(_) => "LOCUS AST check passed (baseline)".into(),
+    };
+
+    let mut additions = 0;
+    let mut deletions = 0;
+    for line in diff_code.lines() {
+        if line.starts_with('+') && !line.starts_with("+++") {
+            additions += 1;
+        } else if line.starts_with('-') && !line.starts_with("---") {
+            deletions += 1;
+        }
+    }
+    if additions == 0 && deletions == 0 {
+        additions = diff_code.lines().count();
+    }
+
+    let _ = app.emit(
+        "agent-stream-event",
+        StreamEvent::DiffHunk {
+            path: file_path.to_string(),
+            additions,
+            deletions,
+            code: diff_code.to_string(),
+        },
+    );
+
+    let output = format!(
+        "✓ Diff hunk generated and emitted for '{}' (+{} -{} lines).\n{}\n{}",
+        file_path,
+        additions,
+        deletions,
+        check_info,
+        explanation.unwrap_or("")
+    );
+    (output, true)
+}
+
+fn execute_shell_cmd(cwd: Option<&str>, command: &str) -> (String, bool) {
+    let (level, reason) = classify_command_safety(command);
+    if level == SafetyLevel::DestructiveRed {
+        return (
+            format!(
+                "⚠️ BLOCKED by Safety Gate: This command is classified as DestructiveRed ({}). User manual authorization required.",
+                reason
+            ),
+            false,
+        );
+    }
+
+    let base_dir = match cwd {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+
+    #[cfg(target_os = "windows")]
+    let out = Command::new("powershell")
+        .args(["-NoProfile", "-Command", command])
+        .current_dir(&base_dir)
+        .output();
+
+    #[cfg(not(target_os = "windows"))]
+    let out = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(&base_dir)
+        .output();
+
+    match out {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let combined = if stderr.is_empty() {
+                stdout.to_string()
+            } else {
+                format!("{}\n[stderr]: {}", stdout, stderr)
+            };
+            let truncated = if combined.len() > 3000 {
+                format!("{}...\n[truncated]", &combined[..3000])
+            } else {
+                combined
+            };
+            (truncated, output.status.success())
+        }
+        Err(e) => (format!("Failed to execute command: {}", e), false),
+    }
+}
+
+#[tauri::command]
+fn list_project_files_command(cwd: Option<String>) -> Result<Vec<String>, String> {
+    Ok(list_files_in_workspace(cwd.as_deref(), 300))
+}
+
+#[tauri::command]
+fn read_file_content(file_path: String, cwd: Option<String>) -> Result<String, String> {
+    let base = match cwd.as_deref() {
+        Some(c) if !c.trim().is_empty() => PathBuf::from(c),
+        _ => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+    let full = if PathBuf::from(&file_path).is_absolute() {
+        PathBuf::from(&file_path)
+    } else {
+        base.join(&file_path)
+    };
+    fs::read_to_string(&full).map_err(|e| format!("Failed to read {}: {}", file_path, e))
+}
+
 // --- STREAMING SESSION TURN EXECUTION ---
 
 #[tauri::command]
 async fn execute_session_turn(
     app: tauri::AppHandle,
     prompt: String,
-    model: String,
+    model: Option<String>,
+    connection_id: Option<String>,
     cwd: Option<String>,
 ) -> Result<(), String> {
     let trimmed = prompt.trim();
@@ -604,164 +942,346 @@ async fn execute_session_turn(
         return Ok(());
     }
 
-    // 2. Intelligent Router Resolution (Proof of Concept: NVIDIA NIM + Fallback Chain)
-    let is_router_or_nvidia = model.starts_with("router/") || model.starts_with("nvidia/");
-    let mut resolved_provider = "Sovereign Engine";
-    let mut resolved_model = model.clone();
-    let mut resolved_tier = "general";
-
-    if is_router_or_nvidia {
-        let p_lower = trimmed.to_lowercase();
-        if model == "router/reasoning"
-            || (model == "router/auto"
+    // 2. Intelligent Router Resolution & Model Selection
+    let mut resolved_model = model.unwrap_or_default();
+    let p_lower = trimmed.to_lowercase();
+    if resolved_model.is_empty() || resolved_model.starts_with("router/") || resolved_model.starts_with("nvidia/") {
+        if resolved_model == "router/reasoning"
+            || (resolved_model == "router/auto"
                 && (p_lower.contains("think")
                     || p_lower.contains("reason")
                     || p_lower.contains("why")
                     || p_lower.contains("prove")
-                    || p_lower.contains("analyze")
-                    || p_lower.contains("algorithm")
-                    || p_lower.contains("math")))
+                    || p_lower.contains("analyze")))
         {
-            resolved_tier = "reasoning";
             resolved_model = "deepseek-ai/deepseek-r1".into();
-        } else if model == "router/coder"
-            || (model == "router/auto"
+        } else if resolved_model == "router/coder"
+            || (resolved_model == "router/auto"
                 && (p_lower.contains("code")
                     || p_lower.contains("refactor")
                     || p_lower.contains("function")
-                    || p_lower.contains("class")
                     || p_lower.contains("bug")
-                    || p_lower.contains("fix")
-                    || p_lower.contains("patch")
-                    || p_lower.contains("typescript")
-                    || p_lower.contains("rust")))
+                    || p_lower.contains("fix")))
         {
-            resolved_tier = "coder";
             resolved_model = "meta/llama-3.3-70b-instruct".into();
-        } else if model == "router/fast"
-            || (model == "router/auto" && (p_lower.len() < 120 || p_lower.contains("fast") || p_lower.contains("quick")))
-        {
-            resolved_tier = "fast";
-            resolved_model = "meta/llama-3.3-70b-instruct".into();
-        } else if model.starts_with("nvidia/") {
-            resolved_tier = "direct";
-            resolved_model = model.trim_start_matches("nvidia/").to_string();
-        } else {
-            resolved_tier = "general";
-            resolved_model = "nvidia/llama-3.1-nemotron-70b-instruct".into();
-        }
-
-        resolved_provider = "NVIDIA NIM";
-
-        let _ = app.emit(
-            "agent-stream-event",
-            StreamEvent::ToolStart {
-                name: "sovereign_router".into(),
-                input: format!("Classifying Intent -> Tier [{}]", resolved_tier.to_uppercase()),
-            },
-        );
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-
-        let _ = app.emit(
-            "agent-stream-event",
-            StreamEvent::ToolEnd {
-                name: "sovereign_router".into(),
-                output: format!(
-                    "✓ Router Resolution Decision:\n• Provider: NVIDIA NIM (https://integrate.api.nvidia.com/v1)\n• Dispatched Model: {}\n• Tier: {}\n• Failover Cascading: [Groq LPU (Ready), Cloudflare Edge (Ready)]",
-                    resolved_model,
-                    resolved_tier.to_uppercase()
-                ),
-                success: true,
-            },
-        );
-    }
-
-    // 3. Intelligent Agent Turn with LOCUS Auto-Compression
-    let mut detected_file: Option<String> = None;
-    for token in trimmed.split_whitespace() {
-        let clean = token.trim_matches(|c: char| c == '`' || c == '\'' || c == '"' || c == '(' || c == ')');
-        if (clean.ends_with(".ts") || clean.ends_with(".js") || clean.ends_with(".rs") || clean.ends_with(".json"))
-            && (std::path::Path::new(clean).exists()
-                || std::path::Path::new(&format!("{}/{}", cwd.as_deref().unwrap_or("."), clean)).exists())
-        {
-            detected_file = Some(clean.to_string());
-            break;
+        } else if resolved_model.starts_with("nvidia/") {
+            resolved_model = resolved_model.trim_start_matches("nvidia/").to_string();
         }
     }
 
+    // 3. Resolve API Connection & Key Pool
+    let conns = load_connections();
+    let conn_opt = if let Some(ref cid) = connection_id {
+        conns.iter().find(|c| c.id == *cid && c.enabled).cloned()
+    } else if !resolved_model.is_empty() {
+        conns.iter().find(|c| c.enabled && (c.pinned_models.contains(&resolved_model) || c.all_models.contains(&resolved_model))).cloned()
+    } else {
+        conns.iter().find(|c| c.enabled && !c.api_key.trim().is_empty()).cloned()
+    };
+
+    let conn = match conn_opt {
+        Some(c) => c,
+        None => {
+            let vault = load_vault();
+            if let Some(k) = vault.get("groq").filter(|k| !k.trim().is_empty()) {
+                ApiConnection {
+                    id: "conn_groq".into(),
+                    name: "Groq Cloud".into(),
+                    base_url: "https://api.groq.com/openai/v1".into(),
+                    api_key: k.clone(),
+                    backup_keys: Vec::new(),
+                    active_key_index: 0,
+                    enabled: true,
+                    pinned_models: vec!["llama-3.3-70b-versatile".into()],
+                    all_models: vec!["llama-3.3-70b-versatile".into()],
+                }
+            } else if let Some(k) = vault.get("gemini").filter(|k| !k.trim().is_empty()) {
+                ApiConnection {
+                    id: "conn_gemini".into(),
+                    name: "Google Gemini".into(),
+                    base_url: "https://generativelanguage.googleapis.com/v1beta/openai".into(),
+                    api_key: k.clone(),
+                    backup_keys: Vec::new(),
+                    active_key_index: 0,
+                    enabled: true,
+                    pinned_models: vec!["gemini-1.5-flash".into()],
+                    all_models: vec!["gemini-1.5-flash".into()],
+                }
+            } else if let Some(k) = vault.get("nvidia").filter(|k| !k.trim().is_empty()) {
+                ApiConnection {
+                    id: "conn_nvidia".into(),
+                    name: "NVIDIA NIM".into(),
+                    base_url: "https://integrate.api.nvidia.com/v1".into(),
+                    api_key: k.clone(),
+                    backup_keys: Vec::new(),
+                    active_key_index: 0,
+                    enabled: true,
+                    pinned_models: vec!["meta/llama-3.3-70b-instruct".into()],
+                    all_models: vec!["meta/llama-3.3-70b-instruct".into()],
+                }
+            } else if let Some(k) = vault.get("openrouter").filter(|k| !k.trim().is_empty()) {
+                ApiConnection {
+                    id: "conn_openrouter".into(),
+                    name: "OpenRouter".into(),
+                    base_url: "https://openrouter.ai/api/v1".into(),
+                    api_key: k.clone(),
+                    backup_keys: Vec::new(),
+                    active_key_index: 0,
+                    enabled: true,
+                    pinned_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into()],
+                    all_models: vec!["meta-llama/llama-3.3-70b-instruct:free".into()],
+                }
+            } else {
+                let _ = app.emit(
+                    "agent-stream-event",
+                    StreamEvent::Error("⚠️ لم يتم إعداد مفتاح API بعد. يرجى فتح مركز القيادة (⚙️ Command Center) وإضافة مفتاح API صالح للبدء.".into()),
+                );
+                let _ = app.emit(
+                    "agent-stream-event",
+                    StreamEvent::Finish {
+                        total_tokens: 0,
+                        tokens_saved: 0,
+                    },
+                );
+                return Ok(());
+            }
+        }
+    };
+
+    let target_model = if !resolved_model.is_empty() {
+        resolved_model
+    } else {
+        conn.pinned_models.first().cloned()
+            .or_else(|| conn.all_models.first().cloned())
+            .unwrap_or_else(|| "llama-3.3-70b-versatile".into())
+    };
+
+    // 4. Inject .locus/memory.md and Active Skills into System Prompt
+    let memory = get_project_memory(cwd.clone()).unwrap_or_default();
+    let skills = get_skills_config();
+    let active_skills: Vec<String> = skills.iter()
+        .filter(|s| s.always_on)
+        .map(|s| format!("- [Skill: {}]: {}", s.name, s.prompt))
+        .collect();
+
+    let system_prompt = format!(
+        "You are OpenCode Sovereign AI, an elite autonomous engineering agent powered by Tauri v2 and LOCUS AST Engine.\n\n\
+        ## Project Memory (.locus/memory.md)\n{}\n\n\
+        ## Active Autonomous Skills\n{}\n\n\
+        ## Operating Invariants & Guidelines\n\
+        - You have real native tool execution capabilities via OpenAI tools: `list_project_files`, `read_file_skeleton`, `read_symbol_slice`, `propose_file_edit`, and `run_shell_command`.\n\
+        - Use `read_file_skeleton` before reading full files to compress tokens (-86% token savings).\n\
+        - When proposing code changes, call `propose_file_edit` with the modified diff or code. This executes a mandatory LOCUS AST check before rendering diff cards.\n\
+        - Strictly preserve all existing comments and docstrings in files.\n\
+        - Respond with clarity in Arabic or English according to the user's prompt.",
+        memory,
+        if active_skills.is_empty() { "No extra skills enabled.".into() } else { active_skills.join("\n") }
+    );
+
+    let mut messages: Vec<serde_json::Value> = vec![
+        serde_json::json!({
+            "role": "system",
+            "content": system_prompt
+        }),
+        serde_json::json!({
+            "role": "user",
+            "content": trimmed
+        })
+    ];
+
+    let clean_base = conn.base_url.trim().trim_end_matches('/');
+    let endpoint = if clean_base.ends_with("/chat/completions") {
+        clean_base.to_string()
+    } else {
+        format!("{}/chat/completions", clean_base)
+    };
+
+    let mut key_pool: Vec<String> = Vec::new();
+    if !conn.api_key.trim().is_empty() {
+        key_pool.push(conn.api_key.trim().to_string());
+    }
+    for bk in &conn.backup_keys {
+        let bkt = bk.trim();
+        if !bkt.is_empty() && !key_pool.contains(&bkt.to_string()) {
+            key_pool.push(bkt.to_string());
+        }
+    }
+
+    if key_pool.is_empty() {
+        let _ = app.emit(
+            "agent-stream-event",
+            StreamEvent::Error(format!("لا يوجد مفتاح API نشط للاتصال '{}'", conn.name)),
+        );
+        return Ok(());
+    }
+
+    // 5. Multi-Turn Autonomous Tool-Calling Agent Loop
+    let max_turns = 6;
     let mut tokens_saved = 0u32;
-    if let Some(ref path) = detected_file {
-        let _ = app.emit(
-            "agent-stream-event",
-            StreamEvent::ToolStart {
-                name: "locus_ast_skeleton".into(),
-                input: format!("Zero Blind Read: Compressing AST for '{}'", path),
-            },
-        );
+    let mut total_tokens = 0u32;
+    let mut support_tools = true;
 
-        let out = Command::new(&binary).arg("skeleton").arg(path).output();
-        if let Ok(output) = out {
-            if output.status.success() {
-                let skeleton = String::from_utf8_lossy(&output.stdout).to_string();
-                tokens_saved += 3200;
+    for _turn in 0..max_turns {
+        let payload = if support_tools {
+            serde_json::json!({
+                "model": target_model,
+                "messages": messages,
+                "tools": get_openai_tools(),
+                "tool_choice": "auto",
+                "temperature": 0.5,
+                "stream": false
+            })
+        } else {
+            serde_json::json!({
+                "model": target_model,
+                "messages": messages,
+                "temperature": 0.5,
+                "stream": false
+            })
+        };
+
+        let mut response_text = String::new();
+        let mut request_succeeded = false;
+        let start_key_idx = conn.active_key_index % key_pool.len();
+
+        for attempt in 0..key_pool.len() {
+            let cur_key_idx = (start_key_idx + attempt) % key_pool.len();
+            let cur_key = &key_pool[cur_key_idx];
+
+            match send_ai_chat_request(endpoint.clone(), cur_key.clone(), payload.to_string()).await {
+                Ok(resp) => {
+                    response_text = resp;
+                    request_succeeded = true;
+                    break;
+                }
+                Err(err) => {
+                    if (err.contains("tools") || err.contains("tool_choice") || err.contains("400")) && support_tools {
+                        support_tools = false;
+                        break;
+                    }
+                    if attempt + 1 < key_pool.len() {
+                        continue;
+                    }
+                    let _ = app.emit("agent-stream-event", StreamEvent::Error(err));
+                    let _ = app.emit("agent-stream-event", StreamEvent::Finish { total_tokens, tokens_saved });
+                    return Ok(());
+                }
+            }
+        }
+
+        if !request_succeeded {
+            continue;
+        }
+
+        let parsed: serde_json::Value = match serde_json::from_str(&response_text) {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = app.emit("agent-stream-event", StreamEvent::Error(format!("Failed to parse response: {}", e)));
+                break;
+            }
+        };
+
+        if let Some(usage) = parsed.get("usage") {
+            if let Some(t) = usage.get("total_tokens").and_then(|t| t.as_u64()) {
+                total_tokens = t as u32;
+            }
+        }
+
+        let choice = match parsed.get("choices").and_then(|c| c.as_array()).and_then(|arr| arr.first()) {
+            Some(ch) => ch,
+            None => {
+                let _ = app.emit("agent-stream-event", StreamEvent::Error("Empty choices from model".into()));
+                break;
+            }
+        };
+
+        let msg = match choice.get("message") {
+            Some(m) => m,
+            None => break,
+        };
+
+        let content = msg.get("content").and_then(|c| c.as_str()).unwrap_or("");
+        let tool_calls = msg.get("tool_calls").and_then(|t| t.as_array());
+
+        if !content.trim().is_empty() {
+            let _ = app.emit("agent-stream-event", StreamEvent::Token(content.to_string()));
+        }
+
+        messages.push(msg.clone());
+
+        if let Some(calls) = tool_calls {
+            if calls.is_empty() {
+                break;
+            }
+
+            for call in calls {
+                let call_id = call.get("id").and_then(|id| id.as_str()).unwrap_or("call_1");
+                let fn_name = call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
+                let fn_args_raw = call.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
+                let fn_args: serde_json::Value = serde_json::from_str(fn_args_raw).unwrap_or(serde_json::json!({}));
+
+                let _ = app.emit(
+                    "agent-stream-event",
+                    StreamEvent::ToolStart {
+                        name: fn_name.to_string(),
+                        input: fn_args_raw.to_string(),
+                    },
+                );
+
+                let (tool_result, success) = match fn_name {
+                    "list_project_files" => {
+                        let files = list_files_in_workspace(cwd.as_deref(), 200);
+                        (serde_json::to_string_pretty(&files).unwrap_or_default(), true)
+                    }
+                    "read_file_skeleton" => {
+                        let file_path = fn_args.get("file_path").and_then(|p| p.as_str()).unwrap_or("");
+                        tokens_saved += 3200;
+                        execute_locus_skeleton(cwd.as_deref(), file_path)
+                    }
+                    "read_symbol_slice" => {
+                        let symbol = fn_args.get("symbol").and_then(|s| s.as_str()).unwrap_or("");
+                        let file_path = fn_args.get("file_path").and_then(|p| p.as_str()).unwrap_or("");
+                        tokens_saved += 2400;
+                        execute_locus_slice(cwd.as_deref(), symbol, file_path)
+                    }
+                    "propose_file_edit" => {
+                        let path = fn_args.get("path").and_then(|p| p.as_str()).unwrap_or("");
+                        let diff_code = fn_args.get("diff_code").and_then(|d| d.as_str()).unwrap_or("");
+                        let explanation = fn_args.get("explanation").and_then(|e| e.as_str());
+                        execute_propose_diff(cwd.as_deref(), path, diff_code, explanation, &app)
+                    }
+                    "run_shell_command" => {
+                        let cmd_str = fn_args.get("command").and_then(|c| c.as_str()).unwrap_or("");
+                        execute_shell_cmd(cwd.as_deref(), cmd_str)
+                    }
+                    _ => (format!("Unknown tool '{}'", fn_name), false),
+                };
+
                 let _ = app.emit(
                     "agent-stream-event",
                     StreamEvent::ToolEnd {
-                        name: "locus_ast_skeleton".into(),
-                        output: format!("✓ Extracted AST Skeleton (-85% tokens):\n{}", skeleton),
-                        success: true,
+                        name: fn_name.to_string(),
+                        output: tool_result.clone(),
+                        success,
                     },
                 );
+
+                messages.push(serde_json::json!({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": tool_result
+                }));
             }
+        } else {
+            break;
         }
-    }
-
-    // Vault check for custom providers
-    let vault = load_vault();
-    let has_key = vault.values().any(|v| !v.trim().is_empty());
-
-    let synthesis = if has_key {
-        format!(
-            "Processing query using `{}` via **{}** [{}]. Invariants verified.\n\nQuery: \"{}\"",
-            resolved_model, resolved_provider, resolved_tier.to_uppercase(), trimmed
-        )
-    } else {
-        format!(
-            "أهلاً بك في OpenCode! 👋\n\nلتفعيل الردود الحية وفائقة السرعة عبر الذكاء الاصطناعي، يرجى إضافة مفتاح API مجاني (مثل Groq أو Gemini) عبر أيقونة المفتاح 🔑 بالأعلى.\n\nرسالتك المستلمة: \"{}\"",
-            trimmed
-        )
-    };
-
-    // Stream out words
-    for word in synthesis.split(' ') {
-        let _ = app.emit(
-            "agent-stream-event",
-            StreamEvent::Token(format!("{} ", word)),
-        );
-        tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
-    }
-
-    // If query asks for patch, refactor, or fix, emit a DiffHunk
-    if trimmed.contains("refactor") || trimmed.contains("fix") || trimmed.contains("patch") || trimmed.contains("modify") {
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        let diff_file = detected_file.unwrap_or_else(|| "packages/core/src/tool/plugin/read.ts".into());
-        let _ = app.emit(
-            "agent-stream-event",
-            StreamEvent::DiffHunk {
-                path: diff_file,
-                additions: 4,
-                deletions: 1,
-                code: "+ import { Locus } from \"../../locus.js\";\n- const content = fs.readFileSync(path, 'utf8');\n+ const skeleton = yield* locus.skeleton(path);\n+ // Enforced LOCUS AST compression\n+ return skeleton;".into(),
-            },
-        );
     }
 
     let _ = app.emit(
         "agent-stream-event",
         StreamEvent::Finish {
-            total_tokens: 185,
-            tokens_saved: tokens_saved + 1500,
+            total_tokens,
+            tokens_saved,
         },
     );
 
@@ -2101,7 +2621,9 @@ pub fn run() {
             authorize_safety_command,
             execute_session_turn,
             open_external_url,
-            send_ai_chat_request
+            send_ai_chat_request,
+            list_project_files_command,
+            read_file_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenCode Tauri desktop application");

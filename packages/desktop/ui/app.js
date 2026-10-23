@@ -126,6 +126,7 @@ const addSkillModal = document.getElementById("addSkillModal");
 document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
   setupKeyboardShortcuts();
+  setupLayoutSwitcher();
   await loadConnections();
   await loadMcpConfig();
   await loadSkillsConfig();
@@ -904,7 +905,7 @@ async function proceedWithSend(text, assistantTurn) {
   isStreaming = true;
   sendBtn.disabled = true;
 
-  // 3. Android-to-PC Remote Client Forwarding
+  // 1. Android-to-PC Remote Client Forwarding
   if (remoteBridgeMode === "remote_client" && remoteDaemonHost) {
     appendToolPill(assistantTurn.container, "Remote Daemon", `Forwarding to PC Host (${remoteDaemonHost})...`);
     try {
@@ -916,7 +917,7 @@ async function proceedWithSend(text, assistantTurn) {
         },
         body: JSON.stringify({
           command: "execute_session_turn",
-          args: { prompt: text }
+          args: { prompt: text, model: activeModelId, connectionId: activeConnectionId }
         })
       });
 
@@ -924,15 +925,6 @@ async function proceedWithSend(text, assistantTurn) {
       const answer = resData.output || resData.message || (resData.success ? "✓ تم تنفيذ العملية عن بعد على الحاسوب." : JSON.stringify(resData));
       assistantTurn.textBlock.innerHTML = renderMarkdown(answer);
       conversationHistory.push({ role: "assistant", content: answer });
-
-      if (text.includes("refactor") || text.includes("عدل") || text.includes("patch") || text.includes("fix")) {
-        renderInteractiveDiffCard(assistantTurn.container, "src/main.rs", [
-          { type: "del", text: "- let status = check_legacy_runtime();" },
-          { type: "add", text: "+ let status = check_universal_router();" },
-          { type: "add", text: "+ // LOCUS AST remote execution enforced" },
-          { type: "add", text: "+ return status;" }
-        ]);
-      }
     } catch (err) {
       assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red);">خطأ في الاتصال بالحاسوب: ${escapeHtml(String(err))}</span>`;
     } finally {
@@ -943,106 +935,30 @@ async function proceedWithSend(text, assistantTurn) {
     return;
   }
 
-  const currentConn = apiConnections.find(c => c.id === activeConnectionId);
-
-  // 1. Auto-Failover Universal Router Request
-  if (currentConn && currentConn.api_key.trim() && invoke) {
+  // 2. Real Sovereign Agent Loop via Headless Bridge (Zero mocks, real tool execution)
+  if (window.SovereignBridge) {
     try {
-      appendToolPill(assistantTurn.container, "Universal Router", `Connecting to ${currentConn.name} (${activeModelId})...`);
-
-      const rawResponse = await invoke("send_universal_chat_request", {
-        connectionId: currentConn.id,
-        model: activeModelId,
-        messagesJson: JSON.stringify(conversationHistory),
-        temperature: 0.6
-      });
-
-      let answer = "✓ تم استلام الرد بنجاح.";
-      try {
-        const parsed = JSON.parse(rawResponse);
-        answer = parsed.choices?.[0]?.message?.content || answer;
-      } catch {
-        answer = rawResponse;
-      }
-
-      assistantTurn.textBlock.innerHTML = renderMarkdown(answer);
-      conversationHistory.push({ role: "assistant", content: answer });
-
-      // Diff card test trigger
-      if (text.includes("refactor") || text.includes("عدل") || text.includes("patch") || text.includes("fix")) {
-        renderInteractiveDiffCard(assistantTurn.container, "src/main.rs", [
-          { type: "del", text: "- let status = check_legacy_runtime();" },
-          { type: "add", text: "+ let status = check_universal_router();" },
-          { type: "add", text: "+ // LOCUS AST zero-blind compression enforced" },
-          { type: "add", text: "+ return status;" }
-        ]);
-      }
-
+      window.SovereignBridge.setActiveSelection(activeConnectionId, activeModelId);
+      currentStreamBuffer = "";
+      await window.SovereignBridge.sendPrompt(text, ".");
     } catch (err) {
       const errStr = String(err);
-      const isDeadModel = errStr.includes("410") || 
-                          errStr.toLowerCase().includes("gone") || 
-                          errStr.toLowerCase().includes("end of life") || 
-                          errStr.includes("404") || 
-                          errStr.toLowerCase().includes("not_found") || 
-                          errStr.toLowerCase().includes("not found");
-
-      if (isDeadModel) {
-        // Auto-purge decommissioned/invalid model from connection
-        if (currentConn && activeModelId) {
-          const deadModel = activeModelId;
-          currentConn.pinned_models = (currentConn.pinned_models || []).filter(m => m !== deadModel);
-          currentConn.all_models = (currentConn.all_models || []).filter(m => m !== deadModel);
-          if (invoke) {
-            invoke("save_api_connection", { connection: currentConn }).catch(console.warn);
-          }
-          ensureActiveModelSelected();
-          updateTopBarPill();
-          renderModelDropdown();
-          renderConnectionsList();
-        }
-
-        assistantTurn.textBlock.innerHTML = `
-          <div class="chat-error-card">
-            <span class="error-badge">⚠️ النموذج متوقف أو غير متاح (HTTP 410 / 404)</span>
-            <p>
-              النموذج <code>${escapeHtml(activeModelId || "المحدد")}</code> وصل إلى نهاية الدعم (End of life) أو غير متوفر في حسابك لدى <strong>${escapeHtml(currentConn.name)}</strong>.
-            </p>
-            <div class="error-actions-row">
-              <button type="button" class="btn-error-action btn-refresh-models">🔄 جلب النماذج الحية المتوفرة</button>
-              <button type="button" class="btn-error-action secondary btn-pick-model">▼ اختيار نموذج آخر</button>
-            </div>
-          </div>
-        `;
-
-        const refreshBtn = assistantTurn.textBlock.querySelector(".btn-refresh-models");
-        if (refreshBtn) {
-          refreshBtn.addEventListener("click", () => {
-            openEditConnectionModal(currentConn);
-            handleFetchModels();
-          });
-        }
-        const pickBtn = assistantTurn.textBlock.querySelector(".btn-pick-model");
-        if (pickBtn) {
-          pickBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            modelDropdownMenu.classList.remove("hidden");
-          });
-        }
-      } else {
-        assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">خطأ في الاتصال بنقطة النهاية: ${escapeHtml(errStr)}</span>`;
-      }
-    } finally {
+      assistantTurn.textBlock.innerHTML = `<div class="chat-error-card"><span class="error-badge">⚠️ خطأ في الاتصال</span><p>${escapeHtml(errStr)}</p></div>`;
       isStreaming = false;
       sendBtn.disabled = false;
       scrollStreamToBottom();
     }
   } else if (invoke) {
     try {
-      await invoke("execute_session_turn", { prompt: text, cwd: "." });
+      currentStreamBuffer = "";
+      await invoke("execute_session_turn", {
+        prompt: text,
+        model: activeModelId,
+        connectionId: activeConnectionId,
+        cwd: "."
+      });
     } catch (err) {
-      assistantTurn.textBlock.innerHTML = `<span style="color: var(--accent-red)">Error: ${err}</span>`;
-    } finally {
+      assistantTurn.textBlock.innerHTML = `<div class="chat-error-card"><span class="error-badge">⚠️ خطأ</span><p>${escapeHtml(String(err))}</p></div>`;
       isStreaming = false;
       sendBtn.disabled = false;
       scrollStreamToBottom();
@@ -1216,27 +1132,35 @@ function handleStreamEvent(event) {
   if (!data) return;
 
   const lastTurn = streamMessages.querySelector(".turn-assistant:last-child");
-  if (!lastTurn) return;
-
-  const textBlock = lastTurn.querySelector(".assistant-text");
+  const textBlock = lastTurn?.querySelector(".assistant-text");
 
   if (data.type === "Token") {
     currentStreamBuffer += data.payload;
     if (textBlock) textBlock.innerHTML += escapeHtml(data.payload);
+
+    // Also update Spotlight view if active
+    const spotlightResult = document.getElementById("spotlightResultArea");
+    if (spotlightResult) {
+      spotlightResult.innerHTML = renderMarkdown(currentStreamBuffer);
+    }
     scrollStreamToBottom();
   } else if (data.type === "ToolStart") {
     currentStreamBuffer = "";
-    appendToolPill(lastTurn, data.payload.name, data.payload.input);
+    if (lastTurn) appendToolPill(lastTurn, data.payload.name, data.payload.input);
+    appendMissionControlTool(data.payload.name, data.payload.input);
     scrollStreamToBottom();
   } else if (data.type === "ToolEnd") {
-    const loader = lastTurn.querySelector(".tool-loader-dot:not(.done)");
-    if (loader) {
-      loader.classList.add("done");
-      loader.parentElement.innerHTML += ` <span class="tool-status-icon">✓</span>`;
+    if (lastTurn) {
+      const loader = lastTurn.querySelector(".tool-loader-dot:not(.done)");
+      if (loader) {
+        loader.classList.add("done");
+        loader.parentElement.innerHTML += ` <span class="tool-status-icon">✓</span>`;
+      }
+      if (data.payload.name.includes("skeleton") || data.payload.name.includes("slice")) {
+        appendLocusSlice(lastTurn, "LOCUS AST", data.payload.name, data.payload.output);
+      }
     }
-    if (data.payload.name.includes("skeleton") || data.payload.name.includes("slice")) {
-      appendLocusSlice(lastTurn, "src/main.rs", "Symbol: AST", data.payload.output);
-    }
+    markMissionControlToolDone(data.payload.name, data.payload.success);
     scrollStreamToBottom();
   } else if (data.type === "DiffHunk") {
     const hunk = data.payload;
@@ -1244,7 +1168,18 @@ function handleStreamEvent(event) {
       type: l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "normal",
       text: l
     }));
-    renderInteractiveDiffCard(lastTurn, hunk.path, lines);
+    if (lastTurn) renderInteractiveDiffCard(lastTurn, hunk.path, lines);
+
+    // Also display in Split IDE Editor Slot
+    const editorFileName = document.getElementById("activeEditorFileName");
+    const editorPlaceholder = document.getElementById("editorPlaceholder");
+    const codeContent = document.getElementById("codeContent");
+    const codeBlock = document.getElementById("codeBlock");
+    if (editorFileName) editorFileName.textContent = `📝 Diff: ${hunk.path}`;
+    if (editorPlaceholder) editorPlaceholder.classList.add("hidden");
+    if (codeContent) codeContent.classList.remove("hidden");
+    if (codeBlock) codeBlock.textContent = hunk.code;
+
     scrollStreamToBottom();
   } else if (data.type === "Finish") {
     if (textBlock && currentStreamBuffer.trim()) {
@@ -1254,6 +1189,266 @@ function handleStreamEvent(event) {
     currentStreamBuffer = "";
     isStreaming = false;
     sendBtn.disabled = false;
+
+    // Update tokens saved in Mission Control & top badge
+    const saved = data.payload?.tokens_saved || 0;
+    const missionTokens = document.getElementById("missionTokensSaved");
+    if (missionTokens) {
+      missionTokens.textContent = `${saved} tokens`;
+    }
+  } else if (data.type === "Error") {
+    if (textBlock) {
+      textBlock.innerHTML = `<div class="chat-error-card"><span class="error-badge">⚠️ تنبيه</span><p>${escapeHtml(data.payload)}</p></div>`;
+    }
+    currentStreamBuffer = "";
+    isStreaming = false;
+    sendBtn.disabled = false;
+    scrollStreamToBottom();
+  }
+}
+
+function appendMissionControlTool(name, input) {
+  const list = document.getElementById("missionToolsList");
+  if (!list) return;
+  const empty = list.querySelector(".empty-tools-hint");
+  if (empty) empty.remove();
+
+  const item = document.createElement("div");
+  item.className = "tool-pill active";
+  item.innerHTML = `<span class="tool-loader-dot"></span><span class="tool-name">${escapeHtml(name)}</span>: <span class="tool-input">${escapeHtml(input.length > 50 ? input.substring(0, 50) + "..." : input)}</span>`;
+  list.prepend(item);
+}
+
+function markMissionControlToolDone(name, success) {
+  const list = document.getElementById("missionToolsList");
+  if (!list) return;
+  const item = list.querySelector(".tool-pill.active");
+  if (item) {
+    item.classList.remove("active");
+    const dot = item.querySelector(".tool-loader-dot");
+    if (dot) dot.remove();
+    item.innerHTML += ` <span style="color: ${success ? "var(--accent-green)" : "var(--accent-red)"}">${success ? "✓" : "✕"}</span>`;
+  }
+}
+
+// --- MODULAR UI LAYOUT SWITCHER ---
+function setupLayoutSwitcher() {
+  const switchBtn = document.getElementById("layoutSwitchBtn");
+  const dropdown = document.getElementById("layoutDropdownMenu");
+  const label = document.getElementById("activeLayoutLabel");
+  const workspace = document.getElementById("sovereignWorkspace");
+  const optButtons = document.querySelectorAll(".layout-opt-btn");
+
+  if (!switchBtn || !dropdown) return;
+
+  const updateActiveUi = (layout) => {
+    if (workspace) workspace.setAttribute("data-layout", layout);
+    document.documentElement.setAttribute("data-layout", layout);
+
+    const layoutNames = {
+      "claude": "Claude Code",
+      "split-ide": "Split IDE",
+      "mission-control": "Mission Control",
+      "spotlight": "Codex Spotlight",
+      "custom": "Custom UI"
+    };
+
+    if (label) label.textContent = layoutNames[layout] || layout;
+
+    optButtons.forEach(btn => {
+      if (btn.getAttribute("data-layout") === layout) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+
+    document.querySelectorAll(".skin-selection-card").forEach(c => {
+      if (c.getAttribute("data-skin") === layout) {
+        c.classList.add("active");
+      } else {
+        c.classList.remove("active");
+      }
+    });
+
+    if (layout === "split-ide") {
+      renderProjectFileTree();
+    }
+  };
+
+  const currentLayout = window.SovereignBridge?.getLayout() || localStorage.getItem("sovereign_ui_layout") || "claude";
+  updateActiveUi(currentLayout);
+
+  switchBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle("hidden");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!dropdown.contains(e.target) && !switchBtn.contains(e.target)) {
+      dropdown.classList.add("hidden");
+    }
+  });
+
+  optButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.getAttribute("data-layout");
+      if (window.SovereignBridge) {
+        window.SovereignBridge.setLayout(target);
+      } else {
+        localStorage.setItem("sovereign_ui_layout", target);
+      }
+      updateActiveUi(target);
+      dropdown.classList.add("hidden");
+    });
+  });
+
+  document.querySelectorAll(".btn-select-skin").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = btn.getAttribute("data-skin");
+      if (window.SovereignBridge) {
+        window.SovereignBridge.setLayout(target);
+      } else {
+        localStorage.setItem("sovereign_ui_layout", target);
+      }
+      updateActiveUi(target);
+      showToastNotification(`✓ تم تفعيل مظهر ${target} بنجاح.`);
+    });
+  });
+
+  const customCssInput = document.getElementById("customCssInput");
+  const customUiPathInput = document.getElementById("customUiPathInput");
+  const applyCustomSkinBtn = document.getElementById("applyCustomSkinBtn");
+  const resetSkinBtn = document.getElementById("resetSkinBtn");
+  const customSkinStatus = document.getElementById("customSkinStatus");
+
+  if (applyCustomSkinBtn) {
+    applyCustomSkinBtn.addEventListener("click", () => {
+      const css = customCssInput?.value || "";
+      const path = customUiPathInput?.value || "";
+      if (window.SovereignBridge) {
+        if (path) window.SovereignBridge.setCustomUiPath(path);
+        if (css) window.SovereignBridge.injectCustomCss(css);
+        window.SovereignBridge.setLayout("custom");
+      }
+      updateActiveUi("custom");
+      if (customSkinStatus) {
+        customSkinStatus.innerHTML = `<span style="color: var(--accent-green);">✓ تم تطبيق القالب المخصص بنجاح.</span>`;
+      }
+    });
+  }
+
+  if (resetSkinBtn) {
+    resetSkinBtn.addEventListener("click", () => {
+      if (window.SovereignBridge) {
+        window.SovereignBridge.injectCustomCss("");
+        window.SovereignBridge.setLayout("claude");
+      }
+      updateActiveUi("claude");
+      if (customCssInput) customCssInput.value = "";
+      if (customUiPathInput) customUiPathInput.value = "";
+      if (customSkinStatus) {
+        customSkinStatus.innerHTML = `<span style="color: var(--text-muted);">✓ تمت استعادة المظهر الافتراضي.</span>`;
+      }
+    });
+  }
+
+  const mobileTabBtns = document.querySelectorAll(".mobile-layout-tabs .m-tab-btn");
+  mobileTabBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      mobileTabBtns.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const targetSlotId = btn.getAttribute("data-target");
+
+      document.querySelectorAll(".sovereign-workspace .slot-pane").forEach(pane => {
+        if (pane.id === targetSlotId || pane.classList.contains(targetSlotId)) {
+          pane.classList.add("active-mobile-pane");
+        } else {
+          pane.classList.remove("active-mobile-pane");
+        }
+      });
+    });
+  });
+
+  const defaultMobilePane = document.getElementById("chatSlot") || document.getElementById("streamViewport");
+  if (defaultMobilePane) defaultMobilePane.classList.add("active-mobile-pane");
+
+  const closeSpotlightBtn = document.getElementById("closeSpotlightBtn");
+  if (closeSpotlightBtn) {
+    closeSpotlightBtn.addEventListener("click", () => {
+      window.SovereignBridge?.setLayout("claude");
+      updateActiveUi("claude");
+    });
+  }
+
+  const refreshFilesBtn = document.getElementById("refreshFilesBtn");
+  if (refreshFilesBtn) {
+    refreshFilesBtn.addEventListener("click", () => {
+      renderProjectFileTree();
+    });
+  }
+}
+
+// --- PROJECT FILE TREE (SPLIT IDE SLOT 1) ---
+async function renderProjectFileTree() {
+  const container = document.getElementById("projectFileTree");
+  if (!container) return;
+
+  container.innerHTML = `<div class="file-tree-loading">جاري قراءة ملفات المشروع...</div>`;
+
+  let files = [];
+  if (window.SovereignBridge) {
+    files = await window.SovereignBridge.fetchProjectFiles(".");
+  } else if (invoke) {
+    files = await invoke("list_project_files_command", { cwd: "." }).catch(() => []);
+  }
+
+  if (!files || files.length === 0) {
+    container.innerHTML = `<div class="file-tree-empty">لا توجد ملفات قابلة للعرض في المجلد الحالي.</div>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  files.forEach(file => {
+    const item = document.createElement("div");
+    item.className = "tree-file-item";
+    const ext = file.split(".").pop() || "";
+    const icon = ext === "rs" ? "🦀" : ext === "ts" || ext === "js" ? "📜" : ext === "json" ? "📋" : ext === "css" ? "🎨" : "📄";
+    item.innerHTML = `<span class="file-icon">${icon}</span><span class="file-name">${escapeHtml(file)}</span>`;
+
+    item.addEventListener("click", async () => {
+      container.querySelectorAll(".tree-file-item").forEach(i => i.classList.remove("active"));
+      item.classList.add("active");
+      await openFileInEditor(file);
+    });
+
+    container.appendChild(item);
+  });
+}
+
+async function openFileInEditor(filePath) {
+  const title = document.getElementById("activeEditorFileName");
+  const extBadge = document.getElementById("activeFileExt");
+  const placeholder = document.getElementById("editorPlaceholder");
+  const codeContent = document.getElementById("codeContent");
+  const codeBlock = document.getElementById("codeBlock");
+
+  if (title) title.textContent = filePath;
+  if (extBadge) extBadge.textContent = filePath.split(".").pop().toUpperCase();
+
+  try {
+    let content = "";
+    if (window.SovereignBridge) {
+      content = await window.SovereignBridge.readFile(filePath, ".");
+    } else if (invoke) {
+      content = await invoke("read_file_content", { filePath, cwd: "." });
+    }
+
+    if (placeholder) placeholder.classList.add("hidden");
+    if (codeContent) codeContent.classList.remove("hidden");
+    if (codeBlock) codeBlock.textContent = content;
+  } catch (err) {
+    if (codeBlock) codeBlock.textContent = `// Failed to read file: ${err}`;
   }
 }
 

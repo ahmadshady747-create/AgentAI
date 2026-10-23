@@ -64,6 +64,57 @@
       </div>
 
       <div class="bar-right">
+        <!-- Instant UI Layout / Skin Switcher -->
+        <div class="layout-picker-container" id="layoutPickerContainer">
+          <button type="button" class="btn-top-bar-icon layout-switch-btn" id="layoutSwitchBtn" title="تغيير مظهر وتخطيط الواجهة">
+            <span class="top-icon">🎨</span>
+            <span class="btn-label" id="activeLayoutLabel">Claude Code</span>
+            <svg class="chevron-down" viewBox="0 0 20 20" fill="currentColor" width="12" height="12">
+              <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+          <div class="layout-dropdown-menu hidden" id="layoutDropdownMenu">
+            <div class="dropdown-header">🎨 اختر تخطيط ومظهر الواجهة (UI Skin)</div>
+            <div class="layout-options-list">
+              <button type="button" class="layout-opt-btn active" data-layout="claude">
+                <span class="opt-icon">⚡</span>
+                <div class="opt-text">
+                  <div class="opt-title">Claude Code (Linear Stream)</div>
+                  <div class="opt-desc">عمود متمركز، بطاقات مطوية، مثالي للتركيز والهاتف</div>
+                </div>
+              </button>
+              <button type="button" class="layout-opt-btn" data-layout="split-ide">
+                <span class="opt-icon">💻</span>
+                <div class="opt-text">
+                  <div class="opt-title">Cursor / Windsurf (Split IDE)</div>
+                  <div class="opt-desc">3 أعمدة: شجرة الملفات، عارض الكود والـ Diff، المحادثة</div>
+                </div>
+              </button>
+              <button type="button" class="layout-opt-btn" data-layout="mission-control">
+                <span class="opt-icon">🚀</span>
+                <div class="opt-text">
+                  <div class="opt-title">Antigravity (Agent Mission Control)</div>
+                  <div class="opt-desc">لوحة المهام و LOCUS، نافذة التوجيه ومخرجات التيرمينال</div>
+                </div>
+              </button>
+              <button type="button" class="layout-opt-btn" data-layout="spotlight">
+                <span class="opt-icon">🔍</span>
+                <div class="opt-text">
+                  <div class="opt-title">Codex Spotlight (Minimal Bar)</div>
+                  <div class="opt-desc">شريط أوامر عائم ونظيف، مدخل وبطاقة نتيجة نهائية</div>
+                </div>
+              </button>
+              <button type="button" class="layout-opt-btn" data-layout="custom">
+                <span class="opt-icon">📁</span>
+                <div class="opt-text">
+                  <div class="opt-title">Custom / External UI Loader</div>
+                  <div class="opt-desc">تحميل قالب أو مسار واجهة خارجية مخصصة</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- LOCUS AST Pulse Badge -->
         <div class="engine-pulse-badge desktop-only" id="locusBadge" title="LOCUS Zero-Blind AST Compression Active">
           <span class="pulse-indicator"></span>
@@ -101,26 +152,110 @@
       </div>
     </header>
 
-    <!-- 2. Single Centered Linear Action Stream (Zero-Clutter) -->
-    <main class="action-stream-viewport" id="streamViewport">
-      <div class="stream-centered-column" id="streamColumn">
-        <!-- Quiet Welcome Header -->
-        <div class="welcome-banner" id="welcomeBanner">
-          <div class="brand-monogram">⚡ opencode</div>
-          <p class="brand-subtext">التدفق الخطي الذكي • محرك مزودات عالمي بدون أي نماذج افتراضية مفروضة</p>
-          <div class="active-provider-chips" id="welcomeProviderChips">
-            <span class="chip-item">🔒 Universal OpenAI Router</span>
-            <span class="chip-item">⚡ LOCUS AST Compression</span>
-            <span class="chip-item">🔌 MCP Context Hub</span>
+    <!-- 2. Sovereign Workspace with Modular Layout Slots -->
+    <div class="sovereign-workspace" id="sovereignWorkspace" data-layout="claude">
+      <!-- Mobile Layout Tabs (Converts multi-pane layouts to smooth tabs on phones) -->
+      <div class="mobile-layout-tabs" id="mobileLayoutTabs">
+        <button type="button" class="m-tab-btn" data-target="slot-sidebar">📁 الملفات</button>
+        <button type="button" class="m-tab-btn" data-target="slot-editor">📝 الكود</button>
+        <button type="button" class="m-tab-btn active" data-target="slot-chat">💬 المحادثة</button>
+        <button type="button" class="m-tab-btn" data-target="slot-mission">🚀 العمليات</button>
+      </div>
+
+      <!-- Slot 1: File Explorer / Project Tree (#sidebarSlot) -->
+      <aside class="slot-pane slot-sidebar" id="sidebarSlot">
+        <div class="slot-pane-header">
+          <span class="slot-pane-title">📁 شجرة الملفات</span>
+          <button type="button" class="btn-slot-icon" id="refreshFilesBtn" title="تحديث الملفات">🔄</button>
+        </div>
+        <div class="file-tree-container" id="projectFileTree">
+          <div class="file-tree-empty">انقر لتحديث ملفات المشروع</div>
+        </div>
+      </aside>
+
+      <!-- Slot 2: Code Editor & Diff Inspector (#editorSlot) -->
+      <section class="slot-pane slot-editor" id="editorSlot">
+        <div class="slot-pane-header">
+          <span class="slot-pane-title" id="activeEditorFileName">📝 عارض الكود والـ Diff</span>
+          <div class="editor-header-actions" id="editorHeaderActions">
+            <span class="file-badge-ext" id="activeFileExt">SRC</span>
           </div>
         </div>
+        <div class="code-viewer-container" id="codeViewerContainer">
+          <div class="editor-placeholder" id="editorPlaceholder">
+            <span>اختر ملفاً من الشجرة أو اطلب من الأجينت تعديلاً لعرضه هنا.</span>
+          </div>
+          <pre class="code-content hidden" id="codeContent"><code id="codeBlock"></code></pre>
+        </div>
+      </section>
 
-        <!-- Dynamic Message Stream Container -->
-        <div class="stream-messages" id="streamMessages">
-          <!-- Turns, Pills, and Diff Cards will be appended here -->
+      <!-- Slot 3: Linear Action Stream & Chat Viewport (#chatSlot) -->
+      <main class="slot-pane slot-chat action-stream-viewport" id="streamViewport">
+        <div class="stream-centered-column" id="streamColumn">
+          <!-- Quiet Welcome Header -->
+          <div class="welcome-banner" id="welcomeBanner">
+            <div class="brand-monogram">⚡ opencode</div>
+            <p class="brand-subtext">التدفق الخطي الذكي • محرك مزودات عالمي بدون أي نماذج افتراضية مفروضة</p>
+            <div class="active-provider-chips" id="welcomeProviderChips">
+              <span class="chip-item">🔒 Universal OpenAI Router</span>
+              <span class="chip-item">⚡ LOCUS AST Compression</span>
+              <span class="chip-item">🔌 MCP Context Hub</span>
+            </div>
+          </div>
+
+          <!-- Dynamic Message Stream Container -->
+          <div class="stream-messages" id="streamMessages">
+            <!-- Turns, Pills, and Diff Cards will be appended here -->
+          </div>
+        </div>
+      </main>
+
+      <!-- Slot 4: Agent Mission Control Panel (#missionSlot) -->
+      <aside class="slot-pane slot-mission" id="missionSlot">
+        <div class="slot-pane-header">
+          <span class="slot-pane-title">🚀 غرفة عمليات الأجينت</span>
+          <span class="mission-status-badge" id="missionStatusBadge">جاهز</span>
+        </div>
+        <div class="mission-content">
+          <div class="mission-card">
+            <div class="mission-card-title">⚡ مؤشرات LOCUS AST</div>
+            <div class="metric-row">
+              <span>التوكنز الموفرة:</span>
+              <strong id="missionTokensSaved">0 tokens</strong>
+            </div>
+            <div class="metric-row">
+              <span>سلامة الـ AST:</span>
+              <strong class="text-green" id="missionLocusStatus">100% Invariants Verified</strong>
+            </div>
+          </div>
+
+          <div class="mission-card">
+            <div class="mission-card-title">📋 خطوات وأدوات الأجينت</div>
+            <div class="tools-execution-list" id="missionToolsList">
+              <div class="empty-tools-hint">في انتظار إطلاق أمر للأجينت...</div>
+            </div>
+          </div>
+
+          <div class="mission-card">
+            <div class="mission-card-title">🛡️ بوابة الأمان (Safety Gate)</div>
+            <div class="safety-monitor-status" id="safetyMonitorStatus">الأوامر الآمنة تُنفّذ فورياً، والأوامر الحساسة خاضعة للموافقة.</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Slot 5: Codex Spotlight Floating Command Bar (#spotlightSlot) -->
+      <div class="slot-spotlight hidden" id="spotlightSlot">
+        <div class="spotlight-card">
+          <div class="spotlight-header">
+            <span class="spotlight-badge">⚡ Spotlight Command Bar</span>
+            <button type="button" class="btn-spotlight-close" id="closeSpotlightBtn">✕</button>
+          </div>
+          <div class="spotlight-result-area" id="spotlightResultArea">
+            <div class="spotlight-placeholder">اكتب سؤالك أو أمرك في الشريط بالأسفل للحصول على رد فوري ومباشر...</div>
+          </div>
         </div>
       </div>
-    </main>
+    </div>
 
     <!-- 3. Floating Prompt & Slash Bar -->
     <footer class="floating-prompt-container">
@@ -211,6 +346,10 @@
           <button type="button" class="tab-btn" data-tab="tab-memory" role="tab" id="tabMemoryBtn">
             <span class="tab-icon">🧠</span>
             <span>ذاكرة المشروع (.locus)</span>
+          </button>
+          <button type="button" class="tab-btn" data-tab="tab-skins" role="tab" id="tabSkinsBtn">
+            <span class="tab-icon">🎨</span>
+            <span>القوالب ومظهر الواجهة</span>
           </button>
         </div>
 
@@ -364,6 +503,69 @@
             <div class="memory-path-badge">📁 مسار الملف: <code id="memoryPathCode">.locus/memory.md</code></div>
             <textarea id="projectMemoryTextarea" class="code-textarea memory-textarea" dir="ltr" rows="15" placeholder="# الذاكرة المعمارية للمشروع..."></textarea>
             <div class="memory-status-msg" id="memoryStatusMsg"></div>
+          </div>
+        </div>
+
+        <!-- Tab 6: UI Skins & External UI Loader -->
+        <div class="tab-content-panel" id="tab-skins" role="tabpanel">
+          <div class="tab-toolbar">
+            <p>تخصيص كامل لمظهر وتخطيط الواجهة (UI Skins) مع إمكانية تحميل قوالب أو ثيمات CSS خارجية.</p>
+          </div>
+          <div class="skins-grid-container">
+            <div class="skin-selection-card" data-skin="claude">
+              <div class="skin-card-header">
+                <span class="skin-icon">⚡</span>
+                <h4>Claude Code (Linear Stream)</h4>
+              </div>
+              <p>عمود واحد متمركز، بطاقات مطوية، وتدفق حواري هادئ وخالٍ من التشتيت.</p>
+              <button type="button" class="btn-select-skin" data-skin="claude">تفعيل هذا المظهر</button>
+            </div>
+
+            <div class="skin-selection-card" data-skin="split-ide">
+              <div class="skin-card-header">
+                <span class="skin-icon">💻</span>
+                <h4>Cursor / Windsurf (Split IDE)</h4>
+              </div>
+              <p>3 أعمدة احترافية: شجرة ملفات المشروع، عارض الكود والـ Diff، ونافذة المحادثة الموازية.</p>
+              <button type="button" class="btn-select-skin" data-skin="split-ide">تفعيل هذا المظهر</button>
+            </div>
+
+            <div class="skin-selection-card" data-skin="mission-control">
+              <div class="skin-card-header">
+                <span class="skin-icon">🚀</span>
+                <h4>Antigravity (Agent Mission Control)</h4>
+              </div>
+              <p>لوحة تحكم مهام الأجينت، إحصائيات LOCUS الحية لتوفير التوكنز، ومراقبة بوابة الأمان.</p>
+              <button type="button" class="btn-select-skin" data-skin="mission-control">تفعيل هذا المظهر</button>
+            </div>
+
+            <div class="skin-selection-card" data-skin="spotlight">
+              <div class="skin-card-header">
+                <span class="skin-icon">🔍</span>
+                <h4>Codex Spotlight (Minimal Command Bar)</h4>
+              </div>
+              <p>شريط أوامر عائم فائق البساطة للأوامر الفورية والنتائج السريعة بدون واجهة كاملة.</p>
+              <button type="button" class="btn-select-skin" data-skin="spotlight">تفعيل هذا المظهر</button>
+            </div>
+          </div>
+
+          <!-- External Custom UI / Theme Loader -->
+          <div class="custom-loader-section">
+            <h4>📁 محمل القوالب والثيمات المخصصة (Custom UI Loader)</h4>
+            <p>أدخل مسار مجلد واجهة خارجية أو اكتب كود CSS مخصص ليتم حقنه فوراً فوق جسر النواة (SovereignBridge).</p>
+            <div class="field-row">
+              <label>مسار مجلد الواجهة الخارجية (External UI Folder Path):</label>
+              <input type="text" id="customUiPathInput" placeholder="C:/custom-ui/ or /themes/dracula.css" dir="ltr">
+            </div>
+            <div class="field-row">
+              <label>كود CSS مخصص (Custom Theme CSS):</label>
+              <textarea id="customCssInput" rows="5" class="code-textarea" placeholder="/* أدخل أي قواعد CSS لتخصيص الألوان والتخطيط */" dir="ltr"></textarea>
+            </div>
+            <div class="loader-actions-row">
+              <button type="button" class="btn-action" id="applyCustomSkinBtn">تطبيق القالب المخصص 🎨</button>
+              <button type="button" class="btn-secondary-action" id="resetSkinBtn">استعادة المظهر الافتراضي</button>
+            </div>
+            <div class="custom-skin-status" id="customSkinStatus"></div>
           </div>
         </div>
       </div>
@@ -520,6 +722,7 @@
 
   </div>
 
+  <script src="bridge.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

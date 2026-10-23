@@ -2338,3 +2338,622 @@ input, textarea, [contenteditable="true"], .stream-messages, pre, code {
     padding: 8px 14px;
   }
 }
+
+/* =========================================================================
+   6. MODULAR UI LAYOUTS & SKINS (Sovereign Headless UI System)
+   ========================================================================= */
+
+/* Top Bar Layout Switcher Dropdown */
+.layout-picker-container {
+  position: relative;
+}
+
+.layout-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.layout-switch-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--border-focus);
+}
+
+.layout-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 280px;
+  background: #141414;
+  border: 1px solid var(--border-focus);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  overflow: hidden;
+  padding: 6px;
+}
+
+.layout-dropdown-menu.hidden {
+  display: none !important;
+}
+
+.layout-dropdown-menu .dropdown-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+}
+
+.layout-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.layout-opt-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-normal);
+  text-align: right;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  width: 100%;
+}
+
+.layout-opt-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.layout-opt-btn.active {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.layout-opt-btn .opt-icon {
+  font-size: 16px;
+  margin-top: 1px;
+}
+
+.layout-opt-btn .opt-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.layout-opt-btn .opt-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* Base Sovereign Workspace Container */
+.sovereign-workspace {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 44px);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.mobile-layout-tabs {
+  display: none;
+}
+
+/* Common Slot Pane Styling */
+.slot-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.slot-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 38px;
+}
+
+.slot-pane-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.btn-slot-icon {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.btn-slot-icon:hover {
+  transform: rotate(45deg);
+  color: var(--text-bright);
+}
+
+/* File Tree in Slot 1 */
+.file-tree-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.file-tree-empty, .file-tree-loading {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+  padding: 20px 10px;
+}
+
+.tree-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  color: var(--text-normal);
+  cursor: pointer;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  direction: ltr;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.tree-file-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.tree-file-item.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+/* Code Editor / Diff Inspector in Slot 2 */
+.code-viewer-container {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: #0A0A0A;
+}
+
+.editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 20px;
+  text-align: center;
+}
+
+.code-content {
+  margin: 0;
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  direction: ltr;
+  text-align: left;
+  color: #D1D5DB;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.file-badge-ext {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+/* Mission Control in Slot 4 */
+.slot-mission .mission-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mission-card {
+  background: #111111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.mission-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+  margin-bottom: 8px;
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+
+.metric-row strong {
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+}
+
+.metric-row .text-green {
+  color: var(--accent-green);
+}
+
+.mission-status-badge {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tools-execution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.empty-tools-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px;
+}
+
+.safety-monitor-status {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Spotlight Command Bar Overlay */
+.slot-spotlight {
+  position: absolute;
+  top: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(650px, 92vw);
+  background: #161616;
+  border: 1px solid var(--border-focus);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  z-index: 500;
+  overflow: hidden;
+}
+
+.spotlight-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.spotlight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.spotlight-badge {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.btn-spotlight-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.spotlight-result-area {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.spotlight-placeholder {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+}
+
+/* =========================================================================
+   LAYOUT 1: CLAUDE CODE (Linear Stream - Default)
+   ========================================================================= */
+.sovereign-workspace[data-layout="claude"] {
+  display: block;
+}
+
+.sovereign-workspace[data-layout="claude"] .slot-sidebar,
+.sovereign-workspace[data-layout="claude"] .slot-editor,
+.sovereign-workspace[data-layout="claude"] .slot-mission,
+.sovereign-workspace[data-layout="claude"] .slot-spotlight {
+  display: none !important;
+}
+
+.sovereign-workspace[data-layout="claude"] .slot-chat {
+  display: flex;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+/* =========================================================================
+   LAYOUT 2: CURSOR / WINDSURF (Split IDE 3-Column Layout)
+   ========================================================================= */
+@media (min-width: 769px) {
+  .sovereign-workspace[data-layout="split-ide"] {
+    display: grid !important;
+    grid-template-columns: 240px 1fr 400px;
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .slot-sidebar {
+    display: flex;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .slot-editor {
+    display: flex;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .slot-chat {
+    display: flex;
+    max-width: 100%;
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .slot-mission,
+  .sovereign-workspace[data-layout="split-ide"] .slot-spotlight {
+    display: none !important;
+  }
+}
+
+/* =========================================================================
+   LAYOUT 3: ANTIGRAVITY (Agent Mission Control)
+   ========================================================================= */
+@media (min-width: 769px) {
+  .sovereign-workspace[data-layout="mission-control"] {
+    display: grid !important;
+    grid-template-columns: 340px 1fr;
+  }
+
+  .sovereign-workspace[data-layout="mission-control"] .slot-mission {
+    display: flex;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .sovereign-workspace[data-layout="mission-control"] .slot-chat {
+    display: flex;
+    max-width: 100%;
+  }
+
+  .sovereign-workspace[data-layout="mission-control"] .slot-sidebar,
+  .sovereign-workspace[data-layout="mission-control"] .slot-editor,
+  .sovereign-workspace[data-layout="mission-control"] .slot-spotlight {
+    display: none !important;
+  }
+}
+
+/* =========================================================================
+   LAYOUT 4: CODEX SPOTLIGHT (Minimal Command Bar)
+   ========================================================================= */
+.sovereign-workspace[data-layout="spotlight"] .slot-sidebar,
+.sovereign-workspace[data-layout="spotlight"] .slot-editor,
+.sovereign-workspace[data-layout="spotlight"] .slot-mission {
+  display: none !important;
+}
+
+.sovereign-workspace[data-layout="spotlight"] .slot-spotlight {
+  display: block !important;
+}
+
+.sovereign-workspace[data-layout="spotlight"] .slot-chat {
+  display: flex;
+  opacity: 0.15;
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* =========================================================================
+   MOBILE RESPONSIVENESS FOR MULTI-COLUMN LAYOUTS (< 768px)
+   ========================================================================= */
+@media (max-width: 768px) {
+  .sovereign-workspace[data-layout="split-ide"],
+  .sovereign-workspace[data-layout="mission-control"] {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .mobile-layout-tabs,
+  .sovereign-workspace[data-layout="mission-control"] .mobile-layout-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    background: #111111;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 6px;
+    gap: 4px;
+    flex-shrink: 0;
+    z-index: 20;
+  }
+
+  .m-tab-btn {
+    flex: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px 4px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s ease;
+  }
+
+  .m-tab-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-subtle);
+    color: var(--accent-green);
+    font-weight: 600;
+  }
+
+  /* Only active pane is visible on mobile */
+  .sovereign-workspace[data-layout="split-ide"] .slot-pane,
+  .sovereign-workspace[data-layout="mission-control"] .slot-pane {
+    display: none !important;
+  }
+
+  .sovereign-workspace[data-layout="split-ide"] .slot-pane.active-mobile-pane,
+  .sovereign-workspace[data-layout="mission-control"] .slot-pane.active-mobile-pane {
+    display: flex !important;
+    flex: 1;
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* Drawer UI Skins Tab Styling */
+.skins-grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.skin-selection-card {
+  background: #141414;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.skin-selection-card:hover {
+  border-color: var(--border-focus);
+}
+
+.skin-selection-card.active {
+  border-color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.skin-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skin-card-header h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-bright);
+}
+
+.skin-selection-card p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  flex: 1;
+}
+
+.btn-select-skin {
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-select-skin:hover {
+  background: var(--accent-green);
+  color: #000;
+  font-weight: 600;
+}
+
+.custom-loader-section {
+  background: #111111;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.custom-loader-section h4 {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  color: var(--text-bright);
+}
+
+.custom-loader-section p {
+  margin: 0 0 12px 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.loader-actions-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.custom-skin-status {
+  margin-top: 8px;
+  font-size: 12px;
+}
+

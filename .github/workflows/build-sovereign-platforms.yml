@@ -79,6 +79,15 @@ jobs:
           echo "keyPassword=opencode123" >> src-tauri/gen/android/keystore.properties
           echo "storeFile=$GITHUB_WORKSPACE/release.keystore" >> src-tauri/gen/android/keystore.properties
 
+      - name: Enforce Android Permissions & Cleartext Traffic
+        working-directory: packages/desktop
+        run: |
+          for m in $(find src-tauri/gen/android -name "AndroidManifest.xml"); do
+            echo "Patching AndroidManifest at $m"
+            grep -q "android.permission.INTERNET" "$m" || sed -i 's/<manifest[^>]*>/&\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>/' "$m"
+            grep -q "usesCleartextTraffic" "$m" || sed -i 's/<application/<application android:usesCleartextTraffic="true"/' "$m"
+          done
+
       - name: Build Android APK
         working-directory: packages/desktop
         run: |
