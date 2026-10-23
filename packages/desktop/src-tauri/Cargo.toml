@@ -1,6 +1,6 @@
 [package]
 name = "opencode-desktop"
-version = "2.0.32"
+version = "2.0.33"
 description = "OpenCode Sovereign AI Assistant powered by LOCUS"
 authors = ["OpenCode Team"]
 edition = "2021"

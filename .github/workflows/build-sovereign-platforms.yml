@@ -137,8 +137,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view v2.0.32-sovereign --repo ${{ github.repository }} || gh release create v2.0.32-sovereign --title "OpenCode Sovereign Edition v2.0.32" --notes "Direct native release binaries" --repo ${{ github.repository }}
-          gh release upload v2.0.32-sovereign release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk --repo ${{ github.repository }} --clobber
+          gh release view v2.0.33-sovereign --repo ${{ github.repository }} || gh release create v2.0.33-sovereign --title "OpenCode Sovereign Edition v2.0.33" --notes "Sovereign native binaries: Decoupled UI (5 Skins), Agentic Tool Loop with LOCUS AST, and Android HTTPS fix." --repo ${{ github.repository }}
+          gh release upload v2.0.33-sovereign release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk --repo ${{ github.repository }} --clobber
+          gh release upload v2.0.32-sovereign release-apk/opencode-mobile-android.apk release-apk/opencode-mobile-android-arm64.apk --repo ${{ github.repository }} --clobber || true
 
   build-windows:
     name: Build Windows x64 Desktop
@@ -167,13 +168,14 @@ jobs:
         run: |
           tauri build --no-bundle
 
-      - name: Package Windows ZIP
+      - name: Package Windows Artifacts
         shell: pwsh
         run: |
           mkdir release-windows
           $exe = Get-ChildItem -Path packages/desktop/src-tauri/target/release -Filter "opencode-desktop.exe" -Recurse | Select-Object -First 1
           if ($exe) {
             Copy-Item $exe.FullName -Destination release-windows/opencode-desktop.exe
+            Copy-Item $exe.FullName -Destination release-windows/opencode-desktop-windows-x64.exe
             Compress-Archive -Path release-windows/opencode-desktop.exe -DestinationPath release-windows/opencode-desktop-windows-x64.zip -Force
             ls release-windows/
           }
@@ -181,14 +183,15 @@ jobs:
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: opencode-windows-zip
-          path: release-windows/*.zip
+          name: opencode-windows-artifacts
+          path: release-windows/*
 
       - name: Upload Windows to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release view v2.0.32-sovereign --repo ${{ github.repository }} || gh release create v2.0.32-sovereign --title "OpenCode Sovereign Edition v2.0.32" --notes "Direct native release binaries" --repo ${{ github.repository }}
-          gh release upload v2.0.32-sovereign release-windows/opencode-desktop-windows-x64.zip --repo ${{ github.repository }} --clobber
+          gh release view v2.0.33-sovereign --repo ${{ github.repository }} || gh release create v2.0.33-sovereign --title "OpenCode Sovereign Edition v2.0.33" --notes "Sovereign native binaries: Decoupled UI (5 Skins), Agentic Tool Loop with LOCUS AST, and Android HTTPS fix." --repo ${{ github.repository }}
+          gh release upload v2.0.33-sovereign release-windows/opencode-desktop-windows-x64.zip release-windows/opencode-desktop-windows-x64.exe release-windows/opencode-desktop.exe --repo ${{ github.repository }} --clobber
+          gh release upload v2.0.32-sovereign release-windows/opencode-desktop-windows-x64.zip release-windows/opencode-desktop-windows-x64.exe release-windows/opencode-desktop.exe --repo ${{ github.repository }} --clobber || true
 
