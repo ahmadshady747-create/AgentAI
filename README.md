@@ -79,6 +79,9 @@ Traditional AI coding agents paste raw files blindly into LLM context windows, w
 - **Semantic Intent Slicing**: Extracts high-density context slices around a specific target symbol (`locus slice <symbol> <file>`).
 - **Safety Invariant Verification**: Validates the LOCUS invariant rule set deterministically in milliseconds before applying changes.
 
+> [!IMPORTANT]
+> **LOCUS engine availability — Windows only (for now).** The official LOCUS distribution ([locus-binaries](https://github.com/ahmadshady747-create/locus-binaries), v1.0.0) currently ships a single Windows x64 binary (`locus.exe`); no native Linux or macOS build has been published yet. On Linux/macOS the LOCUS-backed features (`/locus *` commands, AST skeleton reads, invariant checks) are therefore unavailable, and the verification scripts report those steps as `[SKIP]` instead of failing. AgentAI resolves the engine via `LOCUS_PATH`, then platform-specific locations, then `PATH` — so a future native build will work without code changes. (For reference, the engine binary itself reports a 32-rule catalog, with each `check` run applying and reporting 20 invariant rules.)
+
 ### 2. Sovereign Model Router
 The built-in router dispatches prompts to the optimal inference model based on task intent:
 - **`router/reasoning`**: Dispatched to `deepseek-ai/deepseek-r1` on NVIDIA DGX Cloud for rigorous mathematical, algorithmic, and architectural reasoning.
@@ -115,7 +118,7 @@ The desktop interface supports both standard natural-language interaction and di
 ### Prerequisites
 - **Node.js**: v20 or v24
 - **Rust**: `rustc` and `cargo` $\ge$ 1.80
-- **LOCUS Engine**: `D:\LOCUS\target\release\locus.exe` (or in `PATH`)
+- **LOCUS Engine**: Windows x64 binary (`D:\LOCUS\target\release\locus.exe`, or set `LOCUS_PATH`, or have `locus` in `PATH`). Currently Windows-only — see the availability note under "LOCUS AST Context Compression & Safety" above.
 
 ### Desktop Development
 ```bash
