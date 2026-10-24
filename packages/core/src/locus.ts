@@ -6,6 +6,7 @@ import { Location } from "./location.js"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 
 const execFileAsync = promisify(execFile)
@@ -50,12 +51,20 @@ function resolveLocusBinary(): string {
   if (process.env.LOCUS_PATH && fs.existsSync(process.env.LOCUS_PATH)) {
     return process.env.LOCUS_PATH
   }
-  const defaultPaths = [
-    "D:/LOCUS/target/release/locus.exe",
-    "D:/LOCUS/target/release/locus",
-    "C:/LOCUS/target/release/locus.exe",
-    "C:/Program Files/LOCUS/locus.exe",
-  ]
+  const defaultPaths =
+    process.platform === "win32"
+      ? [
+          "D:/LOCUS/target/release/locus.exe",
+          "D:/LOCUS/target/release/locus",
+          "C:/LOCUS/target/release/locus.exe",
+          "C:/Program Files/LOCUS/locus.exe",
+        ]
+      : [
+          "/usr/local/bin/locus",
+          "/usr/bin/locus",
+          path.join(os.homedir(), ".local/bin/locus"),
+          path.join(os.homedir(), "LOCUS/target/release/locus"),
+        ]
   for (const candidate of defaultPaths) {
     if (fs.existsSync(candidate)) {
       return candidate

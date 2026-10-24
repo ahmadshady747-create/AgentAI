@@ -209,7 +209,7 @@ export interface Service {
   readonly listRoutes: () => Effect.Effect<unknown>
 }
 
-export const ServiceTag = Context.GenericTag<unknown>("@opencode/Router")
+export class ServiceTag extends Context.Service<ServiceTag, Service>()("@opencode/Router") {}
 export const layer = Layer.succeed(
   ServiceTag,
   {
