@@ -20,7 +20,7 @@
 
 **OpenCode Sovereign Edition** is a high-performance, private, zero-bloat source fork of OpenCode re-architected for autonomous software engineering:
 1. **Zero Blind Reads**: All file reads are intercepted through the pure-Rust **LOCUS AST Engine**, reducing prompt token costs by **~85%** via high-fidelity structural skeletons.
-2. **Deterministic Safety Firewall**: Evaluates **32 enterprise invariants** in `< 0.20ms` before code mutations are permitted (preventing null-dereferences, unhandled Option/null returns, and broken imports).
+2. **Deterministic Safety Firewall**: Evaluates a set of enterprise invariants in `< 0.20ms` before code mutations are permitted (preventing null-dereferences, unhandled Option/null returns, and broken imports).
 3. **Sovereign Multi-Provider Router**: Intelligent task-based routing across **NVIDIA NIM** (DeepSeek R1, Llama 3.3 70B, Qwen 2.5 Coder 32B), **Groq LPU**, **Cloudflare Workers AI**, Anthropic, and local **Ollama** with instant cascading failover.
 4. **Claude Code Minimalist Aesthetic**: Native **Tauri v2** client (under 18 MB, zero Chromium/Electron memory overhead) featuring a calm monospace terminal stream, live token streaming, and collapsible syntax-highlighted diff cards.
 5. **Universal Cross-Platform**: Native compilation for Windows, macOS, Linux, and **Android** smartphones/tablets.
@@ -33,14 +33,17 @@ Get the latest standalone release binary directly from the official GitHub Relea
 
 | Platform | Target Architecture | Package / Executable | Direct Download Link |
 | :--- | :--- | :--- | :--- |
-| **Android Mobile** | `aarch64` / `armv7` (Universal) | Signed Release APK (~10 MB) | [**📱 Download opencode-mobile-android.apk**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-mobile-android.apk) |
-| **Windows Desktop (Recommended)** | `x86_64` (Windows 10/11) | ZIP Package (~5.6 MB) | [**📦 Download opencode-desktop-windows-x64.zip**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.zip) |
-| **Windows Desktop** | `x86_64` (Windows 10/11) | Standalone Binary (`.exe`) | [**📥 Download opencode-desktop-windows-x64.exe**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-windows-x64.exe) |
-| **Linux Desktop** | `x86_64` (Ubuntu/Debian/Arch) | Standalone Executable / Deb | [**🐧 Download opencode-desktop-linux-x64**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-linux-x64) |
-| **macOS Desktop** | Apple Silicon & Intel | Standalone Binary | [**🍏 Download opencode-desktop-macos**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-macos) |
+| **Android Mobile** | `aarch64` / `armv7` (Universal) | Signed Release APK (~12.7 MB) | [**📱 Download opencode-mobile-android.apk**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.33-sovereign/opencode-mobile-android.apk) |
+| **Windows Desktop (Recommended)** | `x86_64` (Windows 10/11) | ZIP Package (~2.5 MB) | [**📦 Download opencode-desktop-windows-x64.zip**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.33-sovereign/opencode-desktop-windows-x64.zip) |
+| **Windows Desktop** | `x86_64` (Windows 10/11) | Standalone Binary (`.exe`, ~5.3 MB) | [**📥 Download opencode-desktop-windows-x64.exe**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.33-sovereign/opencode-desktop-windows-x64.exe) |
+| **Linux Desktop** | `x86_64` (Ubuntu/Debian/Arch) | Standalone Executable / Deb (v2.0.32 — previous release; v2.0.33 ships no Linux build yet) | [**🐧 Download opencode-desktop-linux-x64**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-linux-x64) |
+| **macOS Desktop** | Apple Silicon & Intel | Standalone Binary (v2.0.32 — previous release; v2.0.33 ships no macOS build yet) | [**🍏 Download opencode-desktop-macos**](https://github.com/ahmadshady747-create/AgentAI/releases/download/v2.0.32-sovereign/opencode-desktop-macos) |
 
 > [!NOTE]
 > All releases and changelogs are published on the [Releases Page](https://github.com/ahmadshady747-create/AgentAI/releases).
+
+> [!IMPORTANT]
+> **Linux prerequisite:** the desktop binary is a Tauri v2 application and requires WebKitGTK 4.1 at runtime. On Ubuntu/Debian install it first: `sudo apt install libwebkit2gtk-4.1-0` — without it the binary fails to start with `error while loading shared libraries: libwebkit2gtk-4.1.so.0`.
 
 ---
 
@@ -64,7 +67,7 @@ Get the latest standalone release binary directly from the official GitHub Relea
 ┌──────────────────────────────┐ ┌──────────────────────────────┐
 │  LOCUS Pure-Rust AST Engine  │ │ Multi-Provider Inference     │
 │  - Zero Blind Read Skeletons │ │  - NVIDIA NIM DGX Cloud      │
-│  - 32 Enterprise Invariants  │ │  - Groq LPU (Ultra-Fast)     │
+│  - Enterprise Invariants     │ │  - Groq LPU (Ultra-Fast)     │
 │  - Semantic Intent Slicing   │ │  - Cloudflare Workers AI     │
 │  - Hybrid AST + Vector Search│ │  - Anthropic / OpenAI / Zen  │
 └──────────────────────────────┘ └──────────────────────────────┘
@@ -74,7 +77,7 @@ Get the latest standalone release binary directly from the official GitHub Relea
 Traditional AI coding agents paste raw files blindly into LLM context windows, wasting tens of thousands of tokens. OpenCode Sovereign routes code read operations through `locus.exe`:
 - **AST Skeleton Extraction**: Preserves signatures, types, imports, and symbol topology while collapsing implementation bodies (`~85% token reduction`).
 - **Semantic Intent Slicing**: Extracts high-density context slices around a specific target symbol (`locus slice <symbol> <file>`).
-- **Safety Invariant Verification**: Validates 32 rules deterministically in milliseconds before applying changes.
+- **Safety Invariant Verification**: Validates the LOCUS invariant rule set deterministically in milliseconds before applying changes.
 
 ### 2. Sovereign Model Router
 The built-in router dispatches prompts to the optimal inference model based on task intent:
@@ -146,7 +149,7 @@ npx @tauri-apps/cli android build --debug
 Run the automated cross-platform test suite to verify LOCUS AST compression, router matrix decisions, and mobile readiness:
 
 ```bash
-# Cross-Platform Comprehensive Test (20/20 Checks)
+# Cross-Platform Comprehensive Test (platform-specific steps report [SKIP] when an artifact is unavailable)
 node verify_cross_platform.mjs
 
 # NVIDIA Provider & Sovereign Router POC Test
